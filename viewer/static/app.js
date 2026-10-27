@@ -444,6 +444,7 @@ function showHead() {
 		el.append(n);
 	};
 	if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
+	$('align-hint').hidden = !ghost; // only says something when there is a ghost to line up
 	if (ghost) {
 		const gh = ghost.head;
 		const end = gh.reason === 'finish' && gh.runTime ? `${gh.runTime.toFixed(2)} s` : REASONS[gh.reason] || gh.reason || '?';

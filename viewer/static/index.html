@@ -26,13 +26,14 @@
 		<label class="cmp" title="Draw another recording on this map and tickrate as a dashed pink ghost in the lanes">Compare
 			<select id="cmp-sel"><option value="none">None</option></select>
 		</label>
-		<select id="align" title="How the ghost is lined up: each jump's takeoff on the matching takeoff here, or both from the timer start">
+		<select id="align" title="How the ghost is lined up: each jump's takeoff on the matching takeoff here, or both from the timer start. Per jump: compare strafing technique on the same route. Timer start: overall pace, and against replays that skip jumps.">
 			<option value="jump">Align per jump</option>
 			<option value="timer">Align on timer start</option>
 		</select>
 		<button id="to-compare" title="Open the compare page with this attempt and its ghost">Compare page</button>
 		<button id="checks-btn" title="Turn checks on or off and set their thresholds">Check settings</button>
 		<span class="hint">Wheel: zoom · drag: pan · double-click: whole attempt · click a jump: zoom to it</span>
+		<span id="align-hint" class="hint" hidden>Per jump: compare strafing technique on the same route. Timer start: overall pace, and against replays that skip jumps.</span>
 		<section id="settings" hidden>
 			<div class="sec-head">
 				<h2>Check settings</h2>

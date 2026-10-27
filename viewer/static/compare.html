@@ -12,7 +12,7 @@
 	<h1>Compare</h1>
 	<a class="btn back" href="/">← Back to all attempts</a>
 	<label>Map <select id="map"></select></label>
-	<label>Align <select id="align" title="How the others are lined up with the reference (the first pick)">
+	<label>Align <select id="align" title="How the others are lined up with the reference (the first pick). Per jump: compare strafing technique on the same route. Timer start: overall pace, and against replays that skip jumps.">
 		<option value="jump">Per jump</option>
 		<option value="timer">On timer start</option>
 	</select></label>
@@ -33,7 +33,8 @@
 	<section id="graph">
 		<div class="sec-head"><h2>Graph</h2>
 			<span class="muted">Wheel: zoom · drag: pan · double-click: whole run · click a jump: zoom to it</span>
-			<button id="whole">Whole run</button><button id="jump1">Jump 1</button></div>
+			<button id="whole">Whole run</button><button id="jump1">Jump 1</button>
+			<span class="align-tip">Per jump: compare strafing technique on the same route. Timer start: overall pace, and against replays that skip jumps.</span></div>
 		<div id="legend"></div>
 		<div id="readout" class="readout"></div>
 		<div id="plot"><canvas id="base"></canvas><canvas id="over"></canvas></div>
