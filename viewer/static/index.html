@@ -18,6 +18,7 @@
 	<div id="toolbar">
 		<button id="whole">Whole attempt</button>
 		<button id="jump1">Jump 1</button>
+		<button id="checks-btn" title="Turn checks on or off and set their thresholds">Check settings</button>
 		<span class="hint">Wheel: zoom · drag: pan · double-click: whole attempt · click a jump: zoom to it</span>
 	</div>
 	<div id="readout"></div>
@@ -25,7 +26,21 @@
 		<canvas id="base"></canvas>
 		<canvas id="over"></canvas>
 	</div>
+	<section id="settings" hidden>
+		<div class="sec-head">
+			<h2>Check settings</h2>
+			<span class="muted">Saved in this browser. Only changed values are kept, so new defaults still arrive.</span>
+			<button id="reset-checks">Reset all to defaults</button>
+		</div>
+		<div id="settings-list"></div>
+	</section>
+	<section id="mistakes">
+		<div class="sec-head"><h2>Mistakes</h2><span id="mistakes-sum" class="muted"></span></div>
+		<div id="mistakes-list"></div>
+	</section>
 </main>
+<script src="/static/data.js"></script>
+<script src="/static/checks.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

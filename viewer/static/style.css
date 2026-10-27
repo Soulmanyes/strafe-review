@@ -118,3 +118,42 @@ h1 { font-size: 17px; margin: 0; }
 #plot { position: relative; }
 #plot canvas { position: absolute; left: 0; top: 0; }
 #over { cursor: crosshair; }
+
+section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.sec-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 8px; }
+.sec-head button { margin-left: auto; }
+h2 { font-size: 15px; margin: 0; }
+
+.mk {
+	display: grid;
+	grid-template-columns: 80px 170px 1fr;
+	gap: 12px;
+	width: 100%;
+	text-align: left;
+	margin-bottom: 4px;
+	padding: 6px 10px;
+	border-radius: 6px;
+}
+.mk.sel { border: 2px solid var(--accent); background: var(--card-hi); padding: 5px 9px; }
+.mk .lost { font: 600 13px ui-monospace, monospace; color: #ff8a8a; text-align: right; }
+.mk .lost.zero { color: var(--muted); font-weight: 400; }
+.mk .name { font-weight: 600; }
+
+#settings-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }
+.ck { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.ck.off { opacity: 0.6; }
+.ck label.title { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.ck input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+.ck .help { color: var(--muted); font-size: 12px; margin: 3px 0 6px 24px; }
+.ck .param { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 0 0 24px; font-size: 13px; }
+.ck .param input {
+	width: 80px;
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	padding: 3px 6px;
+	font: 13px ui-monospace, monospace;
+}
+.ck .param input:focus { outline: none; border-color: var(--accent); }
+.ck .param.changed input { border-color: var(--replay); }

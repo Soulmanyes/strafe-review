@@ -1,6 +1,6 @@
 # Strafe Review: plan
 
-Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Viewer v1 (main view) written (`viewer/`, see "Viewer v1" below). Next: the mistake checks.
+Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Viewer v1 (main view) written (`viewer/`, see "Viewer v1" below). Mistake checks v1 written (see "Mistake checks v1" below), not yet tried by the owner on new runs.
 
 ## Goal
 
@@ -175,6 +175,27 @@ Measured on the 14 own attempts (bhop_ambience, 100 tick), to set the first defa
 
 
 Each check can be switched on or off in the viewer settings. Thresholds start as defaults and get tuned once real runs are recorded.
+
+#### Mistake checks v1 (2026-10-27)
+
+- **Files.** `viewer/static/data.js` (parse and jump finding, moved out of `app.js` so node can load it), `viewer/static/checks.js` (the checks, pure functions, default thresholds in `CHECKS`) and `viewer/check_mistakes.js` (node harness: `node viewer/check_mistakes.js [--list]` prints mistakes per attempt, counts per check and the strafe stats below).
+- **Strafe split.** A strafe is a run of one turn direction (`ideal_key`, the 5-tick average yaw past 0.3°/tick) inside a jump. Ticks with no clear turn don't break it. Strafes or switches that span a missed tick are skipped.
+- **Rows judged.** Only jumps 1+, cut at the run end, and only rows in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30 u/s per tick and swamped the loss sums). `+left`/`+right` ticks are left out of every turning check, and the Keys lane no longer draws them as "Wrong".
+- **Speed lost** = sum of ideal - gain over the rows involved. Imbalance: the worse side's ideal times the gap. Weak takeoff: median minus this takeoff.
+- **Weak takeoff baseline.** `server.py` adds `j1Takeoff` to each list entry (a Python copy of `findJumps`; matches the JS on all 15 own attempts). The page takes the median of the other own attempts on the same map and tick interval.
+- **Settings** are saved in `localStorage` as only the values that differ from the defaults, so changed defaults still reach the owner.
+- **Defaults** (set from the 15 own attempts, 2026-10-27; one more than above):
+  - Early reversal: first strafe under 18 ticks. It's counted from where that turn began, which in a bhop is usually before the landing; counted from takeoff it flagged most later jumps. Jump 1's first strafe was 21-34 ticks; later jumps 5 %: 27.
+  - Late first strafe: first correct key more than 3 ticks after takeoff.
+  - Weak takeoff: 8+ u/s under the median, with 5+ other attempts.
+  - Too wide: strafe-middle median `yawRatio` over 1.1 (strafe medians: 95 % at 1.11). Too narrow: under 0.4 (10 % at 0.38). 3 ticks skipped at each end, 8+ tick strafes, one entry per strafe.
+  - Uneven: (90th - 10th percentile) / median of the 5-tick average turn speed over the strafe middle, over 0.9 (95 % at 0.95). Raw per-tick yaw is too jumpy for this.
+  - Imbalance: left vs right gain % differ by over 12 points, 4+ strafes per side; one entry per run.
+  - Wrong key / no key: 2+ ticks in a row, not within 4 ticks of a reversal (those are the switch check's).
+  - Switch: offset of the nearest key switch (within 8 ticks) from the reversal; flagged at 4+ ticks early or 2+ late.
+  - W held in air: off; 5+ air ticks with W.
+- **Re-measured with this split** (15 own attempts): switch offsets -7: 1, -6: 1, -5: 4, -4: 5, -3: 8, -2: 30, -1: 39, 0: 46, 1: 20, 2: 4, 3: 7, 4: 3, 7: 1 (169); middle strafes median 31 (5-95 %: 20-49). The earlier 132-switch figure came from a different split.
+- **First counts** with everything on (16 attempts incl. 1 replay): early 5, late first 11, takeoff 3, wide 12, narrow 18, uneven 8, imbalance 3, wrong key 15 (13 in the replay, whose keys seem to lag the turn), no key 9, switch 51 (35 in the replay).
 
 - **Early reversal:** the first strafe after takeoff is too short, so you switched the other way too soon after the prestrafe.
 - **Late first strafe:** ticks between takeoff and the first air strafe.

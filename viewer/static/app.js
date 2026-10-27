@@ -2,7 +2,6 @@
 // Strafe Review viewer: one zoomable graph per attempt, all lanes on a shared tick axis.
 // x = tick - tick of the first run row (rows[preRows]), so 0 is where the timer started.
 
-const BIT = { JUMP: 1 << 1, FORWARD: 1 << 3, LEFT: 1 << 7, RIGHT: 1 << 8, MOVELEFT: 1 << 9, MOVERIGHT: 1 << 10 };
 const COL = {
 	card: '#232733',
 	border: '#4a5468',
@@ -26,7 +25,6 @@ const COL = {
 	post: '#ff5c5c12',
 	hover: '#ffffffcc'
 };
-const AIR_ADD = 30; // u/s the air move adds square to velocity per tick (measured on own runs: 30.00)
 const GUTTER = 128; // lane titles and y labels
 const RIGHT_PAD = 12;
 const LANE_GAP = 8;
@@ -63,103 +61,9 @@ let view = { x0: 0, x1: 1 };
 let hoverIdx = -1;
 let drag = null;
 let gutterText = []; // [text, y]: drawn after the lane clip is lifted
+let selMistake = null; // the mistake picked in the list, outlined on the graph
+const SETTINGS_KEY = 'strafe-review-checks';
 
-// ---------- data ----------
-
-function wrap180(a) {
-	return ((((a + 180) % 360) + 360) % 360) - 180;
-}
-
-function parse(a) {
-	const ix = {};
-	a.cols.forEach((c, i) => (ix[c] = i));
-	const lines = a.rows ? a.rows.split(';') : [];
-	const n = lines.length;
-	const want = ['tick', 'gain', 'ideal', 'ratio', 'right', 'vx', 'vy', 'vz', 'yaw', 'buttons'];
-	const d = { n };
-	for (const w of want) d[w] = new Float64Array(n);
-	lines.forEach((ln, i) => {
-		const v = ln.split(',');
-		for (const w of want) d[w][i] = ix[w] === undefined ? NaN : +v[ix[w]];
-	});
-	const p = Math.min(a.preRows || 0, n - 1);
-	const start = d.tick[p];
-	for (const k of ['x', 'speed', 'gap', 'yawd', 'yaws', 'opt', 'ideal_key']) d[k] = new Float64Array(n);
-	d.ground = new Uint8Array(n);
-	for (let i = 0; i < n; i++) {
-		d.x[i] = d.tick[i] - start;
-		d.speed[i] = Math.hypot(d.vx[i], d.vy[i]);
-		d.gap[i] = i > 0 ? d.tick[i] - d.tick[i - 1] - 1 : 0;
-	}
-	// Ground: vz is exactly 0 there (the move column reads 0 on every row, so it can't be used).
-	// A vz of 0 between rising and falling is an apex, not ground.
-	for (let i = 0; i < n; i++) {
-		if (d.vz[i] !== 0) continue;
-		const prev = i > 0 ? d.vz[i - 1] : 0;
-		const next = i < n - 1 ? d.vz[i + 1] : 0;
-		d.ground[i] = prev > 0 && next < 0 ? 0 : 1;
-	}
-	// Replays carry no tick stats (GetLastTickStats() reads 0 while spectating). Own runs show
-	// gain = change in horizontal speed and ideal = sqrt(v^2 + 30^2) - v exactly, so both are rebuilt from speed.
-	d.derived = !d.ideal.some((v, i) => v !== 0 && !d.ground[i]);
-	if (d.derived) {
-		for (let i = 0; i < n; i++) {
-			const v = i > 0 ? d.speed[i - 1] : NaN;
-			const ok = i > 0 && d.gap[i] === 0 && !d.ground[i];
-			d.gain[i] = ok ? d.speed[i] - v : NaN;
-			d.ideal[i] = ok ? Math.sqrt(v * v + AIR_ADD * AIR_ADD) - v : NaN;
-		}
-	}
-	for (let i = 0; i < n; i++) {
-		d.yawd[i] = i > 0 && d.gap[i] === 0 ? wrap180(d.yaw[i] - d.yaw[i - 1]) : NaN;
-		// Optimal turn per tick: wishdir square to velocity adds `a` sideways, so (v+ideal)^2 = v^2 + a^2
-		// and the velocity turns atan(a / v). Matches the game's yawRatio (median 0.78 vs 0.79 on a test run).
-		const v = i > 0 ? d.speed[i - 1] : NaN;
-		const g = d.ideal[i];
-		d.opt[i] =
-			!d.ground[i] && d.gap[i] === 0 && v > 30 && g > 0
-				? (Math.atan(Math.sqrt(Math.max((v + g) ** 2 - v * v, 0)) / v) * 180) / Math.PI
-				: NaN;
-	}
-	// Per-tick yaw is jumpy (frames and ticks don't line up), so a 5-tick average is drawn on top
-	for (let i = 0; i < n; i++) {
-		let sum = 0;
-		let cnt = 0;
-		for (let j = i - 2; j <= i + 2; j++) {
-			if (j < 0 || j >= n || Math.abs(d.x[j] - d.x[i]) > 2 || !Number.isFinite(d.yawd[j])) continue;
-			sum += d.yawd[j];
-			cnt++;
-		}
-		d.yaws[i] = cnt ? sum / cnt : NaN;
-		// Ideal key follows the turn: yaw going up is a left turn (A), down is right (D)
-		d.ideal_key[i] = !d.ground[i] && Math.abs(d.yaws[i]) > 0.3 ? Math.sign(d.yaws[i]) : 0;
-	}
-	if (d.derived) for (let i = 0; i < n; i++) d.ratio[i] = d.opt[i] > 0 ? Math.abs(d.yaws[i]) / d.opt[i] : NaN;
-	return d;
-}
-
-function findJumps(d, preRows) {
-	const takeoffs = [];
-	for (let i = 1; i < d.n; i++) if (d.vz[i] > 100 && d.vz[i - 1] <= 0.5) takeoffs.push(i);
-	const jumps = takeoffs.map((s, k) => {
-		const stop = k + 1 < takeoffs.length ? takeoffs[k + 1] : d.n;
-		let e = s + 1;
-		while (e < stop && !d.ground[e]) e++;
-		let g = 0;
-		let id = 0;
-		for (let j = s; j < e; j++) {
-			g += d.gain[j];
-			id += d.ideal[j];
-		}
-		return { s, e, x0: d.x[s], x1: d.x[e - 1], pct: id > 0 ? (100 * g) / id : NaN, takeoff: d.speed[s], land: d.speed[e - 1] };
-	});
-	// Jump 1 takes off in the start zone: the one in the air when the timer starts, else the next one
-	const p = Math.min(preRows || 0, d.n - 1);
-	let j1 = jumps.findIndex((j) => j.s <= p && j.e > p);
-	if (j1 < 0) j1 = jumps.findIndex((j) => j.s >= p);
-	jumps.forEach((j, k) => (j.num = j1 < 0 || k < j1 ? 0 : k - j1 + 1));
-	return { jumps, j1 };
-}
 
 function labelText(h) {
 	return h.label === 'replay' ? `Replay: ${h.player || 'unknown player'}` : 'Own run';
@@ -213,6 +117,7 @@ async function loadList() {
 		}
 	}
 	markSelected();
+	findMistakes(); // the takeoff baseline comes from the list
 }
 
 function markSelected() {
@@ -230,9 +135,129 @@ async function open(dir, id) {
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: a.postRows ? d.n - 1 - a.postRows : d.n - 1 };
 	location.hash = `${dir}/${id}`;
 	hoverIdx = -1;
+	selMistake = null;
 	showHead();
 	markSelected();
+	findMistakes();
 	whole();
+}
+
+// ---------- mistakes ----------
+
+function loadSettings() {
+	try {
+		return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+	} catch {
+		return {};
+	}
+}
+
+// Only values that differ from the defaults are stored, so changed defaults still reach old settings
+function saveSetting(id, key, value, def) {
+	const all = loadSettings();
+	const c = (all[id] ||= {});
+	if (value === def) delete c[key];
+	else c[key] = value;
+	if (!Object.keys(c).length) delete all[id];
+	localStorage.setItem(SETTINGS_KEY, JSON.stringify(all));
+}
+
+// Jump-1 takeoff median of the other own attempts on this map and tickrate (j1Takeoff from the server)
+function takeoffBaseline(h) {
+	const vs = list
+		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && Number.isFinite(a.j1Takeoff))
+		.map((a) => a.j1Takeoff);
+	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
+}
+
+function findMistakes() {
+	if (!cur) return;
+	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head));
+	if (selMistake && !cur.mistakes.some((m) => m.check === selMistake.check && m.i0 === selMistake.i0)) selMistake = null;
+	showMistakes();
+}
+
+function showMistakes() {
+	const box = $('mistakes-list');
+	box.replaceChildren();
+	const ms = cur ? cur.mistakes : [];
+	const total = ms.reduce((t, m) => t + m.lost, 0);
+	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all` : '';
+	if (cur && !ms.length) box.textContent = 'No mistakes found with the current settings.';
+	for (const m of ms) {
+		const b = document.createElement('button');
+		b.className = `mk${selMistake === m ? ' sel' : ''}`;
+		const lost = document.createElement('span');
+		lost.className = `lost${m.lost < 0.05 ? ' zero' : ''}`;
+		lost.textContent = `${m.lost.toFixed(1)} u/s`;
+		const name = document.createElement('span');
+		name.className = 'name';
+		name.textContent = m.name;
+		const text = document.createElement('span');
+		text.textContent = `${m.text} · tick ${cur.d.x[m.i0]}${m.i1 > m.i0 ? `–${cur.d.x[m.i1]}` : ''}`;
+		b.append(lost, name, text);
+		b.onclick = () => {
+			selMistake = m;
+			showMistakes();
+			const j = cur.jumps.find((jj) => m.i0 >= jj.s && m.i0 < jj.e);
+			// a mistake inside one jump zooms to that jump, a run-wide one (imbalance) to the whole run
+			if (j && m.check !== 'balance') zoomTo({ x0: Math.min(j.x0, cur.d.x[m.i0]), x1: Math.max(j.x1, cur.d.x[m.i1]) });
+			else whole();
+			$('plot').scrollIntoView({ block: 'nearest' });
+		};
+		box.append(b);
+	}
+}
+
+function showSettings() {
+	const box = $('settings-list');
+	box.replaceChildren();
+	const saved = loadSettings();
+	for (const c of CHECKS) {
+		const s = saved[c.id] || {};
+		const on = s.on === undefined ? c.on : s.on;
+		const card = document.createElement('div');
+		card.className = `ck${on ? '' : ' off'}`;
+		const title = document.createElement('label');
+		title.className = 'title';
+		const cb = document.createElement('input');
+		cb.type = 'checkbox';
+		cb.checked = on;
+		cb.onchange = () => {
+			saveSetting(c.id, 'on', cb.checked, c.on);
+			card.classList.toggle('off', !cb.checked);
+			findMistakes();
+			draw();
+		};
+		title.append(cb, document.createTextNode(c.name));
+		const help = document.createElement('div');
+		help.className = 'help';
+		help.textContent = c.help;
+		card.append(title, help);
+		for (const [p, def] of Object.entries(c.params)) {
+			const row = document.createElement('label');
+			row.className = `param${s[p] !== undefined ? ' changed' : ''}`;
+			const inp = document.createElement('input');
+			inp.type = 'number';
+			inp.step = 'any';
+			inp.value = s[p] === undefined ? def.v : s[p];
+			inp.title = `default ${def.v}`;
+			inp.onchange = () => {
+				const v = inp.value === '' ? def.v : +inp.value;
+				if (!Number.isFinite(v)) return;
+				inp.value = v;
+				saveSetting(c.id, p, v, def.v);
+				row.classList.toggle('changed', v !== def.v);
+				findMistakes();
+				draw();
+			};
+			const lab = document.createElement('span');
+			lab.textContent = `${def.label} (default ${def.v})`;
+			row.append(lab, inp);
+			card.append(row);
+		}
+		box.append(card);
+	}
 }
 
 function showHead() {
@@ -469,7 +494,7 @@ function minOf(d, i0, i1, val) {
 
 const air = (d) => (i) => !d.ground[i];
 // Scales come from strafing rows only: in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30)
-const strafing = (d) => (i) => !d.ground[i] && d.speed[i] > 100;
+const strafingRows = (d) => (i) => !d.ground[i] && d.speed[i] > 100;
 
 const LANE_DRAW = {
 	jumps(g, l, d) {
@@ -498,7 +523,7 @@ const LANE_DRAW = {
 	},
 
 	yaw(g, l, d, i0, i1) {
-		const ok = strafing(d);
+		const ok = strafingRows(d);
 		const optMax = quantile(d, i0, i1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
 		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, i0, i1, (i) => Math.abs(d.yawd[i]), 0.98));
 		const Y = yMap(l, 0, hi);
@@ -542,7 +567,7 @@ const LANE_DRAW = {
 
 	gain(g, l, d, i0, i1) {
 		const isAir = air(d);
-		const ok = strafing(d);
+		const ok = strafingRows(d);
 		const hi = Math.max(0.1, quantile(d, i0, i1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
 		const lo = Math.max(-hi, Math.min(0, minOf(d, i0, i1, (i) => (ok(i) ? d.gain[i] : NaN))));
 		const Y = yMap(l, lo, hi);
@@ -577,7 +602,8 @@ const LANE_DRAW = {
 			if (ideal > 0) bar(3, COL.keyA);
 			else if (ideal < 0) bar(3, COL.keyD);
 			const want = ideal > 0 ? BIT.MOVELEFT : ideal < 0 ? BIT.MOVERIGHT : 0;
-			if (want && !(b & want)) bar(4, COL.bad); // wrong key or no key while turning
+			// wrong key or no key while turning; +left/+right ticks aren't mouse turning, so never wrong
+		if (want && !(b & want) && !(b & (BIT.LEFT | BIT.RIGHT))) bar(4, COL.bad);
 			if (b & (BIT.LEFT | BIT.RIGHT)) bar(5, COL.turn);
 		}
 	},
@@ -617,6 +643,19 @@ function drawHover() {
 	g.setTransform(1, 0, 0, 1, 0, 0);
 	g.clearRect(0, 0, over.width, over.height);
 	g.setTransform(r, 0, 0, r, 0, 0);
+	const bottom = LANES[LANES.length - 1].y + LANES[LANES.length - 1].h;
+	if (cur && selMistake) {
+		const d = cur.d;
+		const X0 = Math.max(px(d.x[selMistake.i0] - 0.5), GUTTER);
+		const X1 = Math.min(px(d.x[selMistake.i1] + 0.5), GUTTER + plotW());
+		if (X1 > X0) {
+			g.fillStyle = '#ff5c5c22';
+			g.fillRect(X0, 0, X1 - X0, bottom);
+			g.strokeStyle = COL.bad;
+			g.lineWidth = 2;
+			g.strokeRect(X0 + 1, 1, X1 - X0 - 2, bottom - 2);
+		}
+	}
 	if (!cur || hoverIdx < 0) {
 		$('readout').innerHTML = '<span class="k">Hover the graph for values.</span>';
 		return;
@@ -628,7 +667,7 @@ function drawHover() {
 	g.lineWidth = 1;
 	g.beginPath();
 	g.moveTo(X, 0);
-	g.lineTo(X, LANES[LANES.length - 1].y + LANES[LANES.length - 1].h);
+	g.lineTo(X, bottom);
 	g.stroke();
 	const b = d.buttons[i];
 	const keys = [
@@ -725,6 +764,20 @@ $('jump1').onclick = () => {
 	if (cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 };
 $('refresh').onclick = loadList;
+$('checks-btn').onclick = () => {
+	const sec = $('settings');
+	sec.hidden = !sec.hidden;
+	if (!sec.hidden) {
+		showSettings();
+		sec.scrollIntoView({ block: 'nearest' });
+	}
+};
+$('reset-checks').onclick = () => {
+	localStorage.removeItem(SETTINGS_KEY);
+	showSettings();
+	findMistakes();
+	draw();
+};
 new ResizeObserver(() => draw()).observe($('plot'));
 
 loadList().then(() => {

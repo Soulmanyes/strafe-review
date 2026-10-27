@@ -6,12 +6,14 @@
 Routes:
   /                          the page (viewer/static/index.html)
   /static/<file>             page files
-  /api/attempts              every saved attempt's header (no rows), newest first
+  /api/attempts              every saved attempt's header (no rows, plus rowCount, dir and
+                             j1Takeoff, the jump-1 takeoff speed), newest first
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
 """
 import argparse
 import gzip
 import json
+import math
 import os
 import re
 import sys
@@ -28,6 +30,37 @@ STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 _heads = {}  # path -> (mtime_ns, size, head)
 
 
+def jump1_takeoff(data):
+    """Horizontal speed at jump 1's takeoff, found the same way as findJumps() in static/data.js.
+
+    Ground is a row with vz exactly 0 that isn't an apex (rising before, falling after). A takeoff is
+    vz going from 0.5 or less to over 100. Jump 1 is the air segment in progress at the timer start
+    (row preRows), else the next one. None when there is no such jump.
+    """
+    cols = data.get("cols") or []
+    rows = data.get("rows") or ""
+    if not rows or not all(c in cols for c in ("vx", "vy", "vz")):
+        return None
+    ix, iy, iz = cols.index("vx"), cols.index("vy"), cols.index("vz")
+    vals = [r.split(",") for r in rows.split(";")]
+    vx = [float(v[ix]) for v in vals]
+    vy = [float(v[iy]) for v in vals]
+    vz = [float(v[iz]) for v in vals]
+    n = len(vz)
+    ground = [vz[i] == 0 and not ((vz[i - 1] if i else 0) > 0 and (vz[i + 1] if i < n - 1 else 0) < 0) for i in range(n)]
+    takeoffs = [i for i in range(1, n) if vz[i] > 100 and vz[i - 1] <= 0.5]
+    p = min(data.get("preRows") or 0, n - 1)
+    jumps = []
+    for k, s in enumerate(takeoffs):
+        stop = takeoffs[k + 1] if k + 1 < len(takeoffs) else n
+        e = s + 1
+        while e < stop and not ground[e]:
+            e += 1
+        jumps.append((s, e))
+    j1 = next((j for j in jumps if j[0] <= p < j[1]), None) or next((j for j in jumps if j[0] >= p), None)
+    return None if j1 is None else round(math.hypot(vx[j1[0]], vy[j1[0]]), 2)
+
+
 def head(path):
     """The attempt's JSON without its rows, cached until the file changes."""
     st = path.stat()
@@ -36,6 +69,7 @@ def head(path):
         return got[2]
     with gzip.open(path, "rt") as f:
         data = json.load(f)
+    data["j1Takeoff"] = jump1_takeoff(data)
     rows = data.pop("rows", "")
     data["rowCount"] = rows.count(";") + 1 if rows else 0
     data["dir"] = path.parent.name
