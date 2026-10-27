@@ -273,6 +273,17 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Compare specific recordings (owner, 2026-10-27):** pick any own run or replay on the same map and tickrate and draw it over the open one. Built with the ghost overlay below.
 - **Alignment (owner's pick, 2026-10-27):** a toolbar switch between "per jump" (default) and "timer start".
 
+- **Compare page (owner, 2026-10-27).** The ghost alone was not enough. The owner wants a clear replay-vs-replay view, "perhaps more", with general stats such as average gain and sync.
+  - It is a new `/compare` page that takes 2 to 4 recordings: own runs or replays, same map and tickrate. The main view keeps its single ghost.
+  - The first pick is the reference. The others align to it with the same per-jump / timer-start switch.
+  - Each recording gets its own colour on one shared graph. The lanes are speed, yaw speed, angle and gain.
+  - A stats table has one column per recording. The owner picked all four stat groups:
+    - Strafing averages: gain %, sync, angle, strafes per jump, % of air time turning.
+    - Run, jump 1 and speed: run time and end, jumps landed, jump-1 takeoff, landing and gain %, max, average and final speed.
+    - A per-jump table of gain % and sync, with the best in each row marked.
+    - Mistake-check counts and u/s lost.
+  - Sync is measured the same way for every recording: held key vs turn direction. Each recording's keys are shifted by the lag that matches best, because replay keys run ahead of the angles.
+
 #### Ghost overlay v1 (2026-10-27)
 
 - **Picker.** "Compare" sits in the main toolbar. It offers None, three presets and "Pick one".
