@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Steam launch option wrapper: runs the collector while Momentum Mod runs.
+#   strafe-review-run sourceyaw-run %command%
+# collector/install.sh links it into ~/.local/bin. Output goes to
+# ~/.local/state/strafe-review/collector.log.
+# keep Steam's runtime libraries and overlay out of the collector; the game gets them back
+GAME_PRELOAD=${LD_PRELOAD-}
+GAME_LIBS=${LD_LIBRARY_PATH-}
+unset LD_PRELOAD LD_LIBRARY_PATH
+
+DIR="$(dirname "$(readlink -f "$0")")"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/strafe-review"
+mkdir -p "$STATE"
+
+{ date; echo "args: $*"; } > "$STATE/collector.log"
+python3 "$DIR/collector.py" >> "$STATE/collector.log" 2>&1 &
+COLLECTOR=$!
+trap 'kill $COLLECTOR 2>/dev/null; wait $COLLECTOR 2>/dev/null' EXIT
+trap 'exit 143' TERM INT HUP
+
+LD_PRELOAD=$GAME_PRELOAD LD_LIBRARY_PATH=$GAME_LIBS "$@"

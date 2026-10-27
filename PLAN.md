@@ -1,6 +1,6 @@
 # Strafe Review: plan
 
-Status: probe done (`recorder/probe/`, results below). Recorder v1 written (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`); waiting for its first play test. Next after that: the Source Yaw collector.
+Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Next: the viewer.
 
 ## Goal
 
@@ -16,7 +16,7 @@ Scope: Momentum Mod only for now. CS:S has no Panorama HUD, so a CS:S version wo
    - It buffers every tick of the attempt. When the attempt ends, it writes the run out in compact chunks with `$.Msg`.
    - Panorama output ends up in the console log (`con_logfile`, already used by Source Yaw as `yaw.log`).
    - Chunked output avoids printing to the console every tick, which could stutter.
-2. **Collector (Source Yaw).** Tails `yaw.log`, puts the chunks back together, and saves each attempt to disk as a compressed file. Source Yaw already tails this log.
+2. **Collector.** Tails `yaw.log`, puts the chunks back together, and saves each attempt to disk as a compressed file. It lives in this private repo for now and moves into Source Yaw when the feature goes public.
 3. **Viewer (local web page).** Served on localhost by Source Yaw. It reads the saved attempts and shows the graphs.
 
 A HUD that only reads and displays data is normal in Momentum; HUD customisation is common there. The recorder never sends inputs.
@@ -95,6 +95,12 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Keys while spectating a replay look like the replay's keys (A/D alternate, 0 rows with no key), not the local player's.
   - Practice mode and bhopping back into the start zone both end the timer as DISABLED (`stop`), not PRIMED. A reset gave PRIMED; one other attempt ended as DISABLED after 11.6 s from an unknown cause.
   - Non-finish ends read `runTime` 0 after the state change, so the recorder now keeps the last `runTime` seen while running.
+- **Collector v1 (2026-10-27).** `collector/collector.py`, with the wire-format reader in `collector/srrec.py` (also used by `check_recorder.py`).
+  - Reads `yaw.log` from the start, then follows it. Only complete lines count. A truncated or replaced log is read again from the start.
+  - Saves each complete attempt to `~/.local/share/strafe-review/attempts/<map>/<id>.json.gz`: the attempt's JSON exactly as the recorder sent it. Files are written to a temp name and renamed, so a reader never sees half a file. This path and layout are part of the stable format.
+  - An attempt whose file already exists is skipped, so re-reading the whole log is safe. Chunks with no end line for 10 minutes are dropped.
+  - Started by the Steam launch option wrapper `collector/strafe-review-run` (linked into `~/.local/bin` by `collector/install.sh`): `strafe-review-run sourceyaw-run %command%`. It runs the collector while the game runs and logs to `~/.local/state/strafe-review/collector.log`. Not hooked into Source Yaw's own `sourceyaw-run`: Steam runs the installed copy, and the public repo must not name this project.
+  - Tested without the game on the play-test log: 6 of 6 attempts saved from uneven slices, none saved twice after a restart, recovery after truncation, and the same files as `check_recorder.py --save`.
 - **Tickrate.** Momentum surf maps run at 66 ticks per second and bhop maps at 100. Store the tick interval with every attempt.
 - **Labels.** Every recording is labelled as one of: your own run, someone else's replay, or a ghost. The label is shown everywhere it appears.
 - **Retention.** Every attempt is kept, compressed. The viewer has a manual "delete older than" button.

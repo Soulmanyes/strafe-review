@@ -6,55 +6,22 @@ Usage: check_recorder.py [yaw.log] [--save DIR]
 Per attempt it prints the head fields and two self-checks:
 - ticks: run rows + gaps against round(runTime / interval), should be within 1
 - replay: tick - replay curtick should stay constant while a replay plays
---save writes each complete attempt to DIR/<id>.json.gz (the later collector's format).
+--save writes each complete attempt to DIR/<map>/<id>.json.gz, like the collector.
 """
-import gzip
 import itertools
-import json
 import os
-import re
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "collector"))
+from collector import save  # after the path above
+from srrec import reassemble
 
 GAME = os.environ.get(
     "MOMENTUM_DIR",
     os.path.expanduser("~/.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum"),
 )
-TAG = "SRREC "
-CHUNK = re.compile(r"(\S+) (\d+)/(\d+) (.*)$")
-END = re.compile(r"(\S+) end n=(\d+) chars=(\d+)$")
-
-
-def read_lines(path):
-    with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            i = line.find(TAG)
-            if i >= 0:
-                yield line[i + len(TAG):].rstrip("\n")
-
-
-def reassemble(lines):
-    """Return (attempts, broken, other): complete attempts as dicts, broken ids, non-data lines."""
-    chunks = defaultdict(dict)
-    attempts, broken, other = [], [], []
-    for body in lines:
-        m = END.match(body)
-        if m:
-            aid, n, chars = m.group(1), int(m.group(2)), int(m.group(3))
-            got = chunks.pop(aid, {})
-            data = "".join(got.get(i, "") for i in range(1, n + 1))
-            if len(got) != n or len(data) != chars:
-                broken.append(f"{aid}: {len(got)}/{n} chunks, {len(data)}/{chars} chars")
-                continue
-            attempts.append(json.loads(data))
-            continue
-        m = CHUNK.match(body)
-        if m:
-            chunks[m.group(1)][int(m.group(2))] = m.group(4)
-        else:
-            other.append(body)
-    broken += [f"{aid}: no end line ({len(got)} chunks)" for aid, got in chunks.items()]
-    return attempts, broken, other
 
 
 def rows(attempt):
@@ -91,25 +58,25 @@ def check(attempt):
 
 def main():
     args = sys.argv[1:]
-    save = None
+    save_dir = None
     if "--save" in args:
         i = args.index("--save")
-        save = args[i + 1]
+        save_dir = args[i + 1]
         del args[i:i + 2]
     log = args[0] if args else os.path.join(GAME, "yaw.log")
 
-    attempts, broken, other = reassemble(read_lines(log))
+    with open(log, encoding="utf-8", errors="replace") as f:
+        attempts, broken, other = reassemble(f)
     for body in other:
         print(body)
     for b in broken:
         print(f"BROKEN {b}")
     for attempt in attempts:
         check(attempt)
-        if save:
-            os.makedirs(save, exist_ok=True)
-            with gzip.open(os.path.join(save, f"{attempt['id']}.json.gz"), "wt", encoding="utf-8") as f:
-                json.dump(attempt, f)
+        if save_dir:
+            save(Path(save_dir), attempt)
     print(f"\n{len(attempts)} attempts, {len(broken)} broken")
 
 
-main()
+if __name__ == "__main__":
+    main()
