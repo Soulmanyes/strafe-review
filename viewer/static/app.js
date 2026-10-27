@@ -72,6 +72,15 @@ function isDrill(h) {
 	return h.label !== 'replay' && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
 }
 
+// A replay recording with no landed jump, or a shorter copy of a replay file recorded again (a replay
+// that starts over after its end is recorded until it is stopped). Never listed unless it is open.
+function isFragment(h) {
+	if (h.label !== 'replay') return false;
+	if (h.landed === 0) return true;
+	const f = h.replayFile;
+	return !!f && list.some((o) => o !== h && o.label === 'replay' && o.replayFile === f && o.rowCount > h.rowCount);
+}
+
 function labelText(h) {
 	return h.label === 'replay' ? `Replay: ${h.player || 'unknown player'}` : 'Own run';
 }
@@ -106,7 +115,7 @@ async function loadList() {
 	$('drill-count').textContent = list.filter(isDrill).length;
 	// the open attempt stays listed even when it is a hidden drill
 	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');
-	const visible = list.filter((a) => showDrills || !isDrill(a) || `${a.dir}/${a.id}` === openKey);
+	const visible = list.filter((a) => `${a.dir}/${a.id}` === openKey || ((showDrills || !isDrill(a)) && !isFragment(a)));
 	const maps = [...new Set(visible.map((a) => a.dir))];
 	for (const m of maps) {
 		const title = document.createElement('div');
@@ -811,7 +820,7 @@ loadList().then(async () => {
 		await open(dir, id);
 		if (what === 'j1' && cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 	} else {
-		const first = list.find((a) => $('show-drills').checked || !isDrill(a)) || list[0];
+		const first = list.find((a) => ($('show-drills').checked || !isDrill(a)) && !isFragment(a)) || list[0];
 		if (first) open(first.dir, first.id);
 	}
 });

@@ -250,6 +250,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - `server.py` adds `landed` to each list entry: jumps from jump 1 on that landed before the run end.
   - The main page hides drills by default, behind a "Show drills (N)" toggle saved in the browser. Shown drills get a purple "Drill · N jumps" chip.
   - The drill page always uses every own attempt.
+- **Replay fragments** are never listed on the main page, unless one is the open attempt. A fragment is a replay recording with no landed jump, or a shorter copy of a `replayFile` that was recorded again.
 - **Known limit.** Attempts already loaded keep the weak-takeoff verdict from load time while new attempts come in. Reload the page to redo it.
 
 ### Comparison
