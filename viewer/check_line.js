@@ -69,7 +69,8 @@ function recorder() {
 			Schedule: () => 0,
 			RegisterForUnhandledEvent: () => 0,
 			GetContextPanel: () => ({ GetParent: () => null, FindChildTraverse: () => null }),
-			CreatePanel: () => ({ IsValid: () => true })
+			// any panel method is a no-op that answers true
+			CreatePanel: () => new Proxy({}, { get: (_, k) => (k === 'visible' ? true : () => true) })
 		},
 		MomentumMovementAPI: { GetTickInterval: () => 0.01 },
 		MomentumTimerAPI: stub,

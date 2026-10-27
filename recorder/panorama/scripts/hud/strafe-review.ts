@@ -641,24 +641,53 @@ function jump1Mistakes(d: Rows, j: Jump, e: number, sts: Strafe[]): Mistake[] {
 	return out;
 }
 
-let lineLabel: Label | null = null;
+let linePanel: Panel | null = null;
 let lineToken = 0;
 
-function showLine(text: string) {
-	if (!lineLabel || !lineLabel.IsValid()) {
+const SHADOW = 'text-shadow: 0px 1px 4px 2px rgba(0, 0, 0, 0.9);';
+
+// drill.js gainColor(): red at 60 % and under, green at 95 % and over
+function gainColor(p: number) {
+	if (!Number.isFinite(p)) return 'rgb(140,140,150)';
+	const t = Math.max(0, Math.min(1, (p - 60) / 35));
+	const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
+	return `rgb(${mix(0xff, 0x7b)},${mix(0x5c, 0xd8)},${mix(0x5c, 0x8f)})`;
+}
+
+// Up to 3 rows under the screen centre: head (landing, gain), one coloured box per strafe, mistake
+function showLine(head: string, strafes: { dir: number; pct: number }[], mistake: string) {
+	if (!linePanel || !linePanel.IsValid()) {
 		const ctx = $.GetContextPanel();
 		const root = ctx.GetParent() ?? ctx;
-		lineLabel = (root.FindChildTraverse('StrafeReviewLine') as Label | null) ?? $.CreatePanel('Label', root, 'StrafeReviewLine', {
-			// Panorama px are 1080p units, so 150px below the centre stays put at any resolution
-			style: `horizontal-align: center; vertical-align: center; margin-top: 150px; font-size: 22px;
-				font-weight: bold; color: #ffffff; text-shadow: 0px 1px 4px 2px rgba(0, 0, 0, 0.9);`
+		root.FindChildTraverse('StrafeReviewLine')?.DeleteAsync(0);
+		// Panorama px are 1080p units, so 150px below the centre stays put at any resolution
+		linePanel = $.CreatePanel('Panel', root, 'StrafeReviewLine', {
+			style: 'horizontal-align: center; vertical-align: center; margin-top: 150px; flow-children: down;'
 		});
 	}
-	lineLabel.text = text;
-	lineLabel.visible = true;
+	const panel = linePanel;
+	panel.RemoveAndDeleteChildren();
+	const text = (parent: Panel, t: string, size: number) =>
+		$.CreatePanel('Label', parent, '', {
+			text: t,
+			style: `horizontal-align: center; font-size: ${size}px; font-weight: bold; color: #ffffff; ${SHADOW}`
+		});
+	if (head) text(panel, head, 22);
+	if (strafes.length) {
+		const row = $.CreatePanel('Panel', panel, '', { style: 'horizontal-align: center; flow-children: right; margin: 4px 0px;' });
+		for (const st of strafes) {
+			$.CreatePanel('Label', row, '', {
+				text: `${KEY(st.dir)} ${Number.isFinite(st.pct) ? st.pct.toFixed(1) : '-'} %`,
+				style: `font-size: 20px; font-weight: bold; color: #111111; background-color: ${gainColor(st.pct)};
+					padding: 2px 8px; margin: 0px 3px; border-radius: 4px;`
+			});
+		}
+	}
+	if (mistake) text(panel, mistake, 19);
+	panel.visible = true;
 	const token = ++lineToken;
 	$.Schedule(LINE_SECONDS, () => {
-		if (token === lineToken && lineLabel?.IsValid()) lineLabel.visible = false;
+		if (token === lineToken && linePanel?.IsValid()) linePanel.visible = false;
 	});
 }
 
@@ -673,12 +702,9 @@ function workOutLine(a: Attempt) {
 	const pcts = strafePcts(d, sts);
 	const mistakes = jump1Mistakes(d, j, e, sts);
 	const top = mistakes[0];
-	const parts: string[] = [];
-	if (SHOW.landing) parts.push(`J1 ${j.land.toFixed(0)} u/s`);
-	if (SHOW.gain) parts.push(`${j.pct.toFixed(2)} %`);
-	if (SHOW.strafes && pcts.length) parts.push(pcts.map((p) => `${KEY(p.dir)} ${Number.isFinite(p.pct) ? p.pct.toFixed(1) : '-'}`).join('  '));
-	if (SHOW.mistake && top) parts.push(`${top.text} (-${top.lost.toFixed(1)} u/s)`);
-	if (parts.length) showLine(parts.join('  ·  '));
+	const head = [SHOW.landing ? `J1 ${j.land.toFixed(0)} u/s` : '', SHOW.gain ? `${j.pct.toFixed(2)} %` : ''].filter(Boolean).join('  ·  ');
+	const mistake = SHOW.mistake && top ? `${top.text} (-${top.lost.toFixed(1)} u/s)` : '';
+	if (head || (SHOW.strafes && pcts.length) || mistake) showLine(head, SHOW.strafes ? pcts : [], mistake);
 	$.Msg(
 		`${LINE_TAG} ${a.id} ${JSON.stringify({
 			s: j.s,
