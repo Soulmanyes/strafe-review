@@ -8,8 +8,9 @@ Routes:
   /drill                     the jump-1 drill page (viewer/static/drill.html)
   /static/<file>             page files
   /api/attempts              every saved attempt's header (no rows, plus rowCount, dir,
-                             j1Takeoff, the jump-1 takeoff speed, and landed, jumps 1+ that
-                             landed before the run end), newest first
+                             j1Takeoff, the jump-1 takeoff speed, landed, jumps 1+ that
+                             landed before the run end, and runGaps, missed ticks inside
+                             the run), newest first
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
 """
@@ -72,6 +73,28 @@ def jump1_takeoff(data):
     return round(math.hypot(vx[j1[0]], vy[j1[0]]), 2), landed
 
 
+def run_gaps(data):
+    """Missed ticks inside the run, as runGaps() in static/data.js: from the timer start to the run
+    end (runTime, else the last row before the post-end tail). A replay's pause at its end isn't counted."""
+    cols = data.get("cols") or []
+    rows = data.get("rows") or ""
+    if not rows or "tick" not in cols:
+        return data.get("gaps") or 0
+    it = cols.index("tick")
+    ticks = [float(r.split(",")[it]) for r in rows.split(";")]
+    n = len(ticks)
+    p = min(data.get("preRows") or 0, n - 1)
+    last = n - 1 - (data.get("postRows") or 0)
+    run_time = data.get("runTime")
+    span = round(run_time / data["interval"]) if run_time else math.inf
+    g = 0
+    for i in range(p + 1, last + 1):
+        if ticks[i] - ticks[p] > span:
+            break
+        g += ticks[i] - ticks[i - 1] - 1
+    return int(g)
+
+
 def head(path):
     """The attempt's JSON without its rows, cached until the file changes."""
     st = path.stat()
@@ -81,6 +104,7 @@ def head(path):
     with gzip.open(path, "rt") as f:
         data = json.load(f)
     data["j1Takeoff"], data["landed"] = jump1_takeoff(data)
+    data["runGaps"] = run_gaps(data)
     rows = data.pop("rows", "")
     data["rowCount"] = rows.count(";") + 1 if rows else 0
     data["dir"] = path.parent.name

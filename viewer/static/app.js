@@ -132,7 +132,7 @@ async function loadList() {
 			const r2 = document.createElement('div');
 			r2.className = 'row2';
 			const t = a.runTime ? `${a.runTime.toFixed(2)} s` : '';
-			r2.textContent = [when(a.started), t, `${a.gaps} missed`].filter(Boolean).join(' · ');
+			r2.textContent = [when(a.started), t, `${a.runGaps ?? a.gaps} missed`].filter(Boolean).join(' · ');
 			b.append(r1, r2);
 			b.onclick = () => open(a.dir, a.id);
 			box.append(b);
@@ -294,7 +294,7 @@ function showHead() {
 	facts.textContent = [
 		h.runTime ? `${h.runTime.toFixed(3)} s` : 'no run time',
 		`${cur.tps} tick`,
-		`${h.gaps} missed ticks`,
+		`${runGaps(h, cur.d)} missed ticks`,
 		`style ${h.style}`,
 		`${cur.jumps.filter((j) => j.num > 0).length} jumps`,
 		when(h.started)

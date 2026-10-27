@@ -100,4 +100,15 @@ function findJumps(d, preRows) {
 	return { jumps, j1 };
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps };
+// Missed ticks inside the run: from the timer start to the run end (runTime, else the last row before
+// the post-end tail). A replay pauses at its end, which reads as one long gap and isn't run data.
+function runGaps(a, d) {
+	const p = Math.min(a.preRows || 0, d.n - 1);
+	const last = a.postRows ? d.n - 1 - a.postRows : d.n - 1;
+	const span = a.runTime ? Math.round(a.runTime / a.interval) : Infinity;
+	let g = 0;
+	for (let i = p + 1; i <= last && d.x[i] <= span; i++) g += d.gap[i];
+	return g;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps };
