@@ -343,7 +343,18 @@ The owner asked for a separate page that updates by itself the moment an attempt
 
 - **Jump-1 drill view:** jump 1 of every attempt in the session, side by side and stacked, with best, median and consistency.
 - **Live page update:** the page refreshes the moment an attempt ends, with no clicking. Nothing ever pops up over the game, because overlays and popups on the game make it stutter.
-- **In-game one-liner (on/off toggle):** after jump 1 lands, the existing Source Yaw in-game overlay briefly shows the single biggest mistake, for example "reversed 3t early".
+- **In-game one-liner (on/off toggle):** after jump 1 lands, a line on the HUD briefly shows how it went.
+
+#### In-game line v1 (2026-10-27)
+
+- **Native HUD label, not the Source Yaw overlay (owner's pick).** The recorder already runs in Momentum's Panorama HUD, so it draws the line itself: a `Label` (`#StrafeReviewLine`) added to the HUD root, centred at 64 % height, shown for 4 s. No overlay window, so no stutter, and Source Yaw stays out of it. It isn't cleared on reset, because in drills the owner resets straight after landing and reads it then.
+- **Fields (owner's list):** landing speed, jump-1 gain %, gain % per strafe (`A 91.2  D 84.0`), plus the biggest jump-1 mistake with its loss. Example: `J1 377 u/s · 83.12 % · A 88.0  D 79.5 · D switch 5 ticks early (-5.7 u/s)`.
+- **Toggles:** one `SHOW` constant at the top of the line code in `strafe-review.ts` for now. The owner wants every field switchable later (a toggle UI is a later step; the viewer's settings live in browser localStorage, which Panorama can't read, so it would need its own channel, e.g. `$.AsyncWebRequest` to the viewer server or a generated settings file).
+- **Worked out in the game.** Jump 1 lands mid-run, long before the attempt reaches the collector, so the recorder computes the line itself from the rows it already holds: a TS port of `data.js` `parse`/`findJumps`, the drill page's per-strafe gain % and the jump-1 checks of `checks.js` (early reversal, late first strafe, wide, narrow, uneven, wrong key, no key, switch) at their **default** thresholds. Weak takeoff (needs other attempts) and imbalance (whole run) are left out. Changed thresholds in the viewer settings don't reach the game.
+- **When.** The recorder scans new rows for a landing (vz from below 0 to exactly 0) and works the line out 3 rows later, since the 5-tick turn average reads 2 rows ahead. If jump 1 hasn't landed yet (the landing was an earlier hop), it waits for the next landing. Own attempts only: tick stats read 0 while spectating a replay.
+- **Logged** as `[panorama] SRLINE <id> <json>` in yaw.log (start, landing row, land, gain %, strafes, all jump-1 mistakes). The collector only reads `SRREC` lines.
+- **Parity check:** `node viewer/check_line.js` feeds every saved own attempt row by row through the recorder code (types stripped by node, Panorama stubbed) and diffs it with the viewer's numbers: 44 of 44 identical on 2026-10-27, line shown at landing + 3 rows on all. `--log [yaw.log]` compares the lines the game really logged with the saved attempts.
+- The port must follow changes to `data.js`, `checks.js` defaults or the drill's per-strafe gain %. `check_line.js` catches drift.
 
 ### Detail
 

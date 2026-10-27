@@ -56,6 +56,7 @@ interface Attempt {
 	gaps: number;
 	runTime: number; // last runTime seen while running; reset and stop read 0 after the state change
 	tail: Tail | null; // set once the timer stopped running; the attempt is dumped when it is over
+	line: LineState;
 }
 
 interface Tail {
@@ -232,7 +233,8 @@ function startAttempt() {
 		preRows: ring.length,
 		gaps: 0,
 		runTime: 0,
-		tail: null
+		tail: null,
+		line: { done: replaying || !!meta, seen: 0, at: -1 }
 	};
 }
 
@@ -307,8 +309,408 @@ function onTargetChange(why: string) {
 	lastKey = '';
 }
 
+// ---------------------------------------------------------------------------------------------
+// In-game jump-1 line: shortly after jump 1 lands, a label on the HUD shows landing speed, gain %,
+// gain % per strafe and the biggest jump-1 mistake. Own attempts only (tick stats read 0 while
+// spectating). The numbers are a port of the viewer's data.js parse/findJumps, drill.js strafeStats
+// and checks.js runChecks (jump-1 checks, default thresholds); viewer/check_line.js diffs the two.
+// Each line also goes to yaw.log as "SRLINE <id> <json>", which the collector ignores.
+
+const LINE_TAG = 'SRLINE';
+const SHOW = { landing: true, gain: true, strafes: true, mistake: true };
+const LINE_SECONDS = 4;
+// The 5-tick turn average reads 2 rows ahead, so the strafes are split a few rows past the landing
+const LINE_DELAY_ROWS = 3;
+
+interface LineState {
+	done: boolean; // shown, or not wanted (replays)
+	seen: number; // rows already scanned for a landing
+	at: number; // row count at which to work the line out, -1 while waiting for a landing
+}
+
+// checks.js defaults (CHECKS), jump-1 checks only
+const CFG = {
+	early: { minTicks: 18 },
+	lateFirst: { maxTicks: 3 },
+	wide: { ratio: 1.2, skip: 3 },
+	narrow: { ratio: 0.4, skip: 3 },
+	uneven: { spread: 0.9, skip: 3 },
+	wrongKey: { minTicks: 2 },
+	noKey: { minTicks: 3 },
+	switch: { early: 4, late: 2 }
+};
+const SWITCH_WINDOW = 8;
+const COLLISION = 10;
+const B_LEFT = 1 << 7;
+const B_RIGHT = 1 << 8;
+const B_MOVELEFT = 1 << 9;
+const B_MOVERIGHT = 1 << 10;
+
+interface Rows {
+	n: number;
+	tick: number[];
+	gain: number[];
+	ideal: number[];
+	ratio: number[];
+	vz: number[];
+	buttons: number[];
+	speed: number[];
+	gap: number[];
+	ground: number[];
+	yaws: number[];
+	key: number[]; // ideal key: +1 turning left (A), -1 right (D), 0 no clear turn
+}
+
+interface Jump {
+	s: number;
+	e: number;
+	pct: number;
+	land: number;
+}
+
+interface Strafe {
+	dir: number;
+	i0: number;
+	i1: number;
+	n: number;
+	gap: boolean;
+	btn: number;
+}
+
+interface Mistake {
+	check: string;
+	i0: number;
+	lost: number;
+	text: string;
+}
+
+function wrap180(a: number) {
+	return ((((a + 180) % 360) + 360) % 360) - 180;
+}
+
+function median(vs: number[]) {
+	if (!vs.length) return NaN;
+	const s = [...vs].sort((a, b) => a - b);
+	const m = s.length >> 1;
+	return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function pctile(vs: number[], q: number) {
+	if (!vs.length) return NaN;
+	const s = [...vs].sort((a, b) => a - b);
+	return s[Math.min(s.length - 1, Math.floor(q * s.length))];
+}
+
+function keyDir(b: number) {
+	const a = (b & B_MOVELEFT) !== 0;
+	const d = (b & B_MOVERIGHT) !== 0;
+	return a && !d ? 1 : d && !a ? -1 : 0;
+}
+
+// data.js parse(), own-run columns only
+function parseRows(rows: string[]): Rows {
+	const n = rows.length;
+	const d: Rows = { n, tick: [], gain: [], ideal: [], ratio: [], vz: [], buttons: [], speed: [], gap: [], ground: [], yaws: [], key: [] };
+	const yaw: number[] = [];
+	const yawd: number[] = [];
+	for (let i = 0; i < n; i++) {
+		const v = rows[i].split(',');
+		d.tick.push(+v[0]);
+		d.gain.push(+v[1]);
+		d.ideal.push(+v[2]);
+		d.ratio.push(+v[3]);
+		d.vz.push(+v[7]);
+		yaw.push(+v[8]);
+		d.buttons.push(+v[10]);
+		d.speed.push(Math.hypot(+v[5], +v[6]));
+		d.gap.push(i > 0 ? d.tick[i] - d.tick[i - 1] - 1 : 0);
+	}
+	// Ground: vz exactly 0, except an apex between rising and falling
+	for (let i = 0; i < n; i++) {
+		const prev = i > 0 ? d.vz[i - 1] : 0;
+		const next = i < n - 1 ? d.vz[i + 1] : 0;
+		d.ground.push(d.vz[i] !== 0 ? 0 : prev > 0 && next < 0 ? 0 : 1);
+		yawd.push(i > 0 && d.gap[i] === 0 ? wrap180(yaw[i] - yaw[i - 1]) : NaN);
+	}
+	for (let i = 0; i < n; i++) {
+		let sum = 0;
+		let cnt = 0;
+		for (let j = i - 2; j <= i + 2; j++) {
+			if (j < 0 || j >= n || Math.abs(d.tick[j] - d.tick[i]) > 2 || !Number.isFinite(yawd[j])) continue;
+			sum += yawd[j];
+			cnt++;
+		}
+		d.yaws.push(cnt ? sum / cnt : NaN);
+		d.key.push(!d.ground[i] && Math.abs(d.yaws[i]) > 0.3 ? Math.sign(d.yaws[i]) : 0);
+	}
+	return d;
+}
+
+// data.js findJumps(): jump 1 is the air segment in progress at the timer start, else the next one
+function findJump1(d: Rows, preRows: number): Jump | null {
+	const takeoffs: number[] = [];
+	for (let i = 1; i < d.n; i++) if (d.vz[i] > 100 && d.vz[i - 1] <= 0.5) takeoffs.push(i);
+	let jumps = takeoffs.map((s, k) => {
+		const stop = k + 1 < takeoffs.length ? takeoffs[k + 1] : d.n;
+		let e = s + 1;
+		while (e < stop && !d.ground[e]) e++;
+		let g = 0;
+		let id = 0;
+		for (let j = s; j < e; j++) {
+			if (!Number.isFinite(d.gain[j]) || !Number.isFinite(d.ideal[j])) continue;
+			g += d.gain[j];
+			id += d.ideal[j];
+		}
+		return { s, e, pct: id > 0 ? (100 * g) / id : NaN, land: d.speed[e - 1] };
+	});
+	const p = Math.min(preRows, d.n - 1);
+	let tp = -1;
+	for (let i = 1; i <= p; i++) {
+		if (d.gap[i] > 0) continue;
+		const a = d.speed[i - 1];
+		const b = d.speed[i];
+		if ((a > 100 && b < 1) || (a < 1 && b > 100)) tp = i;
+	}
+	if (tp > 0) jumps = jumps.filter((j) => j.e > tp);
+	let j1 = jumps.findIndex((j) => j.s <= p && j.e > p);
+	if (j1 < 0) j1 = jumps.findIndex((j) => j.s >= p);
+	return j1 < 0 ? null : jumps[j1];
+}
+
+const strafing = (d: Rows, i: number) => !d.ground[i] && d.speed[i] > 100 && !(d.gain[i] < -COLLISION);
+const turnBtn = (d: Rows, i: number) => (d.buttons[i] & (B_LEFT | B_RIGHT)) !== 0;
+
+function strafesOf(d: Rows, s: number, e: number): Strafe[] {
+	const out: Strafe[] = [];
+	let cur: Strafe | null = null;
+	for (let i = s; i < e; i++) {
+		const k = d.key[i];
+		if (!k) continue;
+		if (!cur || cur.dir !== k) {
+			cur = { dir: k, i0: i, i1: i, n: 0, gap: false, btn: 0 };
+			out.push(cur);
+		}
+		cur.i1 = i;
+	}
+	for (const st of out) {
+		st.n = d.tick[st.i1] - d.tick[st.i0] + 1;
+		for (let i = st.i0; i <= st.i1; i++) {
+			if (i > st.i0 && d.gap[i] > 0) st.gap = true;
+			if (turnBtn(d, i)) st.btn++;
+		}
+	}
+	return out;
+}
+
+function switchesOf(d: Rows, s: number, e: number) {
+	const out: { i: number; dir: number }[] = [];
+	let last = 0;
+	for (let i = Math.max(s - SWITCH_WINDOW, 0); i < e; i++) {
+		const k = keyDir(d.buttons[i]);
+		if (!k) continue;
+		if (last && k !== last) out.push({ i, dir: k });
+		last = k;
+	}
+	return out;
+}
+
+function lostOver(d: Rows, i0: number, i1: number) {
+	let s = 0;
+	for (let i = i0; i <= i1; i++) if (strafing(d, i) && Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) s += d.ideal[i] - d.gain[i];
+	return Math.max(s, 0);
+}
+
+function turnStart(d: Rows, s: number, dir: number) {
+	let from = s;
+	let still = 0;
+	for (let i = s - 1; i >= 0 && d.gap[i + 1] === 0; i--) {
+		const k = d.key[i];
+		if (k === dir) {
+			from = i;
+			still = 0;
+		} else if (k || ++still > 3) break;
+	}
+	return from;
+}
+
+function interior(d: Rows, st: Strafe, skip: number) {
+	const out: number[] = [];
+	for (let i = st.i0 + skip; i <= st.i1 - skip; i++) if (strafing(d, i) && !turnBtn(d, i) && d.gap[i] === 0) out.push(i);
+	return out;
+}
+
+function runsOf(d: Rows, from: number, to: number, bad: (i: number) => boolean, min: number) {
+	const out: { i0: number; i1: number }[] = [];
+	let r: { i0: number; i1: number } | null = null;
+	for (let i = from; i < to; i++) {
+		if (bad(i) && !(r && d.gap[i] > 0)) {
+			if (!r) r = { i0: i, i1: i };
+			r.i1 = i;
+			continue;
+		}
+		if (r && r.i1 - r.i0 + 1 >= min) out.push(r);
+		r = bad(i) ? { i0: i, i1: i } : null;
+	}
+	if (r && r.i1 - r.i0 + 1 >= min) out.push(r);
+	return out;
+}
+
+// drill.js strafeStats(): gain % per strafe over the rows the checks judge
+function strafePcts(d: Rows, sts: Strafe[]) {
+	return sts.map((st) => {
+		let g = 0;
+		let id = 0;
+		for (let i = st.i0; i <= st.i1; i++) {
+			if (strafing(d, i) && Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) {
+				g += d.gain[i];
+				id += d.ideal[i];
+			}
+		}
+		return { dir: st.dir, pct: id > 0 ? (100 * g) / id : NaN };
+	});
+}
+
+const KEY = (dir: number) => (dir > 0 ? 'A' : 'D');
+
+// checks.js runChecks() for jump 1 (weak takeoff needs other attempts, imbalance the whole run)
+function jump1Mistakes(d: Rows, j: Jump, e: number, sts: Strafe[]): Mistake[] {
+	const s = j.s;
+	const out: Mistake[] = [];
+	const add = (check: string, i0: number, i1: number, text: string, lost?: number) =>
+		out.push({ check, i0, lost: lost === undefined ? lostOver(d, i0, i1) : lost, text });
+	const reversals = sts.slice(1).map((st) => st.i0);
+	const nearReversal = (i: number) => reversals.some((r) => Math.abs(d.tick[i] - d.tick[r]) <= SWITCH_WINDOW / 2);
+
+	const first = sts[0];
+	if (first && sts.length > 1 && !first.gap) {
+		const len = d.tick[first.i1] - d.tick[turnStart(d, s, first.dir)] + 1;
+		if (len < CFG.early.minTicks) add('early', s, first.i1, `reversed after ${len} ticks`);
+	}
+
+	let at = -1;
+	for (let i = s; i < e; i++) {
+		if (d.key[i] && keyDir(d.buttons[i]) === d.key[i]) {
+			at = i;
+			break;
+		}
+	}
+	const delay = at < 0 ? NaN : d.tick[at] - d.tick[s];
+	if (delay > CFG.lateFirst.maxTicks) add('lateFirst', s, at - 1, `first key ${delay} ticks late`);
+
+	sts.forEach((st, k) => {
+		if (st.gap || st.n < 8) return;
+		const name = `${KEY(st.dir)}${k + 1}`;
+		const inW = interior(d, st, CFG.wide.skip).filter((i) => Number.isFinite(d.ratio[i]));
+		const mW = median(inW.map((i) => d.ratio[i]));
+		if (inW.length >= 4 && mW > CFG.wide.ratio) add('wide', st.i0, st.i1, `${name} too wide (${mW.toFixed(2)})`, lostOver(d, inW[0], inW[inW.length - 1]));
+		const inN = interior(d, st, CFG.narrow.skip).filter((i) => Number.isFinite(d.ratio[i]));
+		const mN = median(inN.map((i) => d.ratio[i]));
+		if (inN.length >= 4 && mN < CFG.narrow.ratio) add('narrow', st.i0, st.i1, `${name} too narrow (${mN.toFixed(2)})`, lostOver(d, inN[0], inN[inN.length - 1]));
+		const inU = interior(d, st, CFG.uneven.skip)
+			.map((i) => Math.abs(d.yaws[i]))
+			.filter(Number.isFinite);
+		const mid = median(inU);
+		const spread = mid > 0 ? (pctile(inU, 0.9) - pctile(inU, 0.1)) / mid : NaN;
+		if (inU.length >= 6 && spread > CFG.uneven.spread) add('uneven', st.i0, st.i1, `${name} uneven turn`);
+	});
+
+	const judged = (i: number) => d.key[i] !== 0 && !turnBtn(d, i) && !nearReversal(i);
+	for (const r of runsOf(d, s, e, (i) => judged(i) && keyDir(d.buttons[i]) === -d.key[i], CFG.wrongKey.minTicks))
+		add('wrongKey', r.i0, r.i1, `wrong key ${r.i1 - r.i0 + 1} ticks`);
+	for (const r of runsOf(d, s, e, (i) => judged(i) && !(d.buttons[i] & (B_MOVELEFT | B_MOVERIGHT)), CFG.noKey.minTicks))
+		add('noKey', r.i0, r.i1, `no key ${r.i1 - r.i0 + 1} ticks`);
+
+	const sw = switchesOf(d, s, e);
+	for (let k = 1; k < sts.length; k++) {
+		const st = sts[k];
+		if (st.gap || sts[k - 1].gap) continue;
+		let best: { off: number; i: number } | null = null;
+		for (const w of sw) {
+			if (w.dir !== st.dir) continue;
+			const off = d.tick[w.i] - d.tick[st.i0];
+			if (Math.abs(off) <= SWITCH_WINDOW && (!best || Math.abs(off + 1) < Math.abs(best.off + 1))) best = { off, i: w.i };
+		}
+		if (!best) continue;
+		const lo = Math.min(best.i, st.i0);
+		const hi = Math.max(best.i, st.i0);
+		if (best.off <= -CFG.switch.early) add('switch', lo, hi, `${KEY(st.dir)} switch ${-best.off} ticks early`);
+		else if (best.off >= CFG.switch.late) add('switch', lo, hi, `${KEY(st.dir)} switch ${best.off} ticks late`);
+	}
+
+	out.sort((a, b) => b.lost - a.lost);
+	return out;
+}
+
+let lineLabel: Label | null = null;
+let lineToken = 0;
+
+function showLine(text: string) {
+	if (!lineLabel || !lineLabel.IsValid()) {
+		const ctx = $.GetContextPanel();
+		const root = ctx.GetParent() ?? ctx;
+		lineLabel = (root.FindChildTraverse('StrafeReviewLine') as Label | null) ?? $.CreatePanel('Label', root, 'StrafeReviewLine', {
+			style: `horizontal-align: center; y: 64%; font-size: 22px; font-weight: bold; color: #ffffff;
+				text-shadow: 0px 0px 4px 2px #000000e0;`
+		});
+	}
+	lineLabel.text = text;
+	lineLabel.visible = true;
+	const token = ++lineToken;
+	$.Schedule(LINE_SECONDS, () => {
+		if (token === lineToken && lineLabel?.IsValid()) lineLabel.visible = false;
+	});
+}
+
+function workOutLine(a: Attempt) {
+	const d = parseRows(a.rows);
+	const endIdx = a.tail ? a.tail.endRows - 1 : d.n - 1;
+	const j = findJump1(d, a.preRows);
+	// not landed yet: the landing seen was a hop before jump 1, or the run ended in the air
+	if (!j || j.e >= d.n || j.e - 1 > endIdx) return false;
+	const e = Math.min(j.e, endIdx + 1);
+	const sts = strafesOf(d, j.s, e);
+	const pcts = strafePcts(d, sts);
+	const mistakes = jump1Mistakes(d, j, e, sts);
+	const top = mistakes[0];
+	const parts: string[] = [];
+	if (SHOW.landing) parts.push(`J1 ${j.land.toFixed(0)} u/s`);
+	if (SHOW.gain) parts.push(`${j.pct.toFixed(2)} %`);
+	if (SHOW.strafes && pcts.length) parts.push(pcts.map((p) => `${KEY(p.dir)} ${Number.isFinite(p.pct) ? p.pct.toFixed(1) : '-'}`).join('  '));
+	if (SHOW.mistake && top) parts.push(`${top.text} (-${top.lost.toFixed(1)} u/s)`);
+	if (parts.length) showLine(parts.join('  ·  '));
+	$.Msg(
+		`${LINE_TAG} ${a.id} ${JSON.stringify({
+			s: j.s,
+			e: j.e,
+			land: +j.land.toFixed(3),
+			pct: +j.pct.toFixed(3),
+			strafes: pcts.map((p) => [p.dir, +p.pct.toFixed(3)]),
+			mistakes: mistakes.map((m) => [m.check, m.i0, +m.lost.toFixed(3)])
+		})}`
+	);
+	return true;
+}
+
+// Scans new rows for a landing (vz from falling to exactly 0); works the line out a few rows later
+function lineStep() {
+	const a = attempt;
+	if (!a || a.line.done) return;
+	const st = a.line;
+	for (; st.seen < a.rows.length; st.seen++) {
+		if (st.seen === 0 || st.at >= 0) continue;
+		const vz = Number(a.rows[st.seen].split(',')[7]);
+		const prev = Number(a.rows[st.seen - 1].split(',')[7]);
+		if (vz === 0 && prev < 0) st.at = st.seen + 1 + LINE_DELAY_ROWS;
+	}
+	if (st.at >= 0 && a.rows.length >= st.at) {
+		st.done = workOutLine(a); // false: keep scanning for the next landing
+		st.at = -1;
+	}
+}
+
 function loop() {
 	guard('sample', sample);
+	guard('line', lineStep);
 	if (attempt?.tail && Date.now() > attempt.tail.untilMs) guard('tail', finishTail);
 	guard('flush', flush);
 	$.Schedule(0, loop);
