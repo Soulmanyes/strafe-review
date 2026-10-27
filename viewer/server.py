@@ -14,6 +14,8 @@ Routes:
                              landed before the run end, and runGaps, missed ticks inside
                              the run), newest first
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
+  /api/mouse                 sensitivity and m_yaw from the game's config.cfg now, for attempts
+                             recorded before the recorder stamped them (null if unreadable)
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
 """
 import argparse
@@ -32,6 +34,8 @@ TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 # Same characters collector.map_dir() keeps; a leading dot is refused so ".." never names a folder
 MAP = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 ID = re.compile(r"[a-z0-9]{1,40}")
+GAME_CFG = "~/.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum/cfg/config.cfg"
+CVAR = re.compile(r'^\s*(sensitivity|m_yaw)\s+"([^"]*)"', re.MULTILINE)
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
@@ -126,6 +130,15 @@ def attempts(store):
     return out
 
 
+def game_mouse(cfg):
+    """sensitivity and m_yaw from config.cfg (written by the game when it quits), or None."""
+    try:
+        found = {k: float(v) for k, v in CVAR.findall(cfg.read_text(errors="replace"))}
+    except (OSError, ValueError):
+        return None
+    return found if len(found) == 2 else None
+
+
 def snapshot(store):
     """Every saved attempt file. The collector writes .<id>.tmp and renames it, so the glob only sees whole files."""
     return set(store.glob("*/*.json.gz"))
@@ -133,6 +146,7 @@ def snapshot(store):
 
 class Handler(BaseHTTPRequestHandler):
     store = None
+    game_cfg = None
 
     def send(self, code, body, ctype, extra=None):
         self.send_response(code)
@@ -188,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, path.read_bytes(), ctype)
         elif parts == ["api", "events"]:
             return self.events()
+        elif parts == ["api", "mouse"]:
+            return self.send(200, json.dumps(game_mouse(self.game_cfg)).encode(), "application/json")
         elif parts == ["api", "attempts"]:
             body = json.dumps(attempts(self.store)).encode()
             return self.send(200, body, "application/json")
@@ -206,8 +222,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--store", default=os.path.expanduser("~/.local/share/strafe-review/attempts"))
+    ap.add_argument("--game-cfg", default=os.path.expanduser(GAME_CFG), help="Momentum's cfg/config.cfg")
     args = ap.parse_args()
     Handler.store = Path(args.store)
+    Handler.game_cfg = Path(args.game_cfg)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Strafe Review viewer on http://127.0.0.1:{args.port}/ (attempts from {args.store})")
     try:

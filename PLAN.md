@@ -94,7 +94,8 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
 - **Wire format 1.** Every line is `[panorama] SRREC <id> ...`:
   - `<id> <i>/<n> <text>`: chunk i of n, at most 900 characters. The chunks joined in order are one JSON object.
   - `<id> end n=<n> chars=<c>`: last line; an attempt with missing chunks is dropped.
-  - JSON fields: `format, id, started, map, interval, style, track, label, player, replayFile, practice, version, cols, preRows, rows, events, reason, runTime, gaps, ended`.
+  - JSON fields: `format, id, started, map, interval, style, track, label, player, replayFile, practice, version, mouse, cols, preRows, rows, events, reason, runTime, gaps, ended`.
+  - `mouse` (added 2026-10-27, optional, so older files lack it): `{sensitivity, m_yaw, cl_yawspeed, dpi}` read when the attempt starts. `dpi` is what Momentum's own mouse settings page stored (`$.persistentStorage` `settings.mouseDPI`), or null. `mouse` is null if the HUD couldn't read the settings.
   - `rows` is rows joined by `;`, each row the comma-separated values named in `cols`: `tick, gain, ideal, ratio, right, vx, vy, vz, yaw, pitch, buttons, move, duck, rtick`. New columns are added at the end and named in `cols`, so old files still read.
   - `id` is `Date.now()` in base 36 plus 2 random characters, so it never repeats across `panorama_reload`.
   - Chunks go out at most 200 per frame, so a long run never hitches.
@@ -357,6 +358,17 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Parity check:** `node viewer/check_line.js` feeds every saved own attempt row by row through the recorder code (types stripped by node, Panorama stubbed) and diffs it with the viewer's numbers: 44 of 44 identical on 2026-10-27, line shown at landing + 3 rows on all. `--log [yaw.log]` compares the lines the game really logged with the saved attempts.
 - **Live test (2026-10-27):** after `panorama_reload` and a jump-1 drill session, `check_line.js --log` compared 76 lines the game logged with the saved attempts: 0 differ (1 attempt skipped, no landed jump 1).
 - The port must follow changes to `data.js`, `checks.js` defaults or the drill's per-strafe gain %. `check_line.js` catches drift.
+
+#### Mouse-terms advice v1 (2026-10-27)
+
+- **Formula:** cm = degrees × 2.54 / (DPI × sensitivity × m_yaw), the same as Momentum's mouse settings page. Both pages show the cm per 360° next to the DPI box, so it can be checked against the game's page.
+- **Sens per attempt:** the recorder stamps `mouse` into each head (see the wire format), so a sens change shows up between attempts. Older attempts use the game's current `sensitivity`/`m_yaw` from `cfg/config.cfg` (`/api/mouse`; the game writes it when it quits) and say so.
+- **DPI:** typed in once in the viewer (drill page toolbar or the main page's check settings; stored in localStorage `strafe-review-mouse`, shared by both pages). If the box is empty, it is pre-filled from the newest head with a Momentum-stored DPI.
+- **Drill page:** a Mouse column in the per-strafe table: how far the mouse moved in the strafe (net turn in the strafe's direction) next to the optimal turn over the same ticks. The "turned slower/faster than usual" advice adds both in cm. Ticks with +left/+right held, missed ticks and rows the checks don't judge are left out.
+- **Main view:** the hover readout shows the 5-tick average turn and the optimal as mouse speed in cm/s. For a replay it says "at your sens": the speed you'd need to copy it, not the player's own mouse movement.
+- **In-game line:** unchanged (no cm there), so `check_line.js` parity is untouched.
+- **Check:** `node viewer/check_mouse.js [--dpi N]`: the formula against Momentum's, `strafeTurn()` on hand-made rows, then jump-1 strafes of saved attempts in cm. Over 290 own strafes of 10+ ticks, moved/optimal has a median of 0.84, in line with the usual yawRatio of about 0.8.
+- **Open:** whether Momentum's HUD context can read `$.persistentStorage` and `GetSettingFloat` (both seen only in menu pages so far). The recorder logs `[panorama] SRREC mouse {...}` on load; an error shows up as `err mouse`. Neither ever stops an attempt from being recorded.
 
 ### Detail
 

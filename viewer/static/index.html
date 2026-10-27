@@ -38,6 +38,8 @@
 			<div class="sec-head">
 				<h2>Check settings</h2>
 				<span class="muted">Saved in this browser. Only changed values are kept, so new defaults still arrive.</span>
+				<label class="cmp" title="Your mouse DPI, for turning degrees into centimetres of mouse movement (shared with the drill page)">Mouse DPI <input id="dpi" type="number" min="100" max="64000" step="50" placeholder="e.g. 800"></label>
+				<span id="cm360" class="hint"></span>
 				<button id="reset-checks">Reset all to defaults</button>
 				<button id="close-checks" title="Close (Esc)">Close</button>
 			</div>
@@ -56,6 +58,7 @@
 </main>
 <script src="/static/data.js"></script>
 <script src="/static/checks.js"></script>
+<script src="/static/mouse.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

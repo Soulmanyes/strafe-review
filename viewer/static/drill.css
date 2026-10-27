@@ -14,7 +14,8 @@ body.drill { display: block; height: auto; min-height: 100vh; }
 	border-bottom: 1px solid var(--border);
 }
 #bar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-#bar select {
+#bar input { width: 80px; }
+#bar select, #bar input {
 	background: var(--card);
 	color: var(--text);
 	border: 1px solid var(--border);

@@ -86,6 +86,25 @@ function r(value: number, digits: number) {
 	return Number.isFinite(value) ? value.toFixed(digits) : 'nan';
 }
 
+// Mouse settings for turning degrees into mouse distance in the viewer. Read per attempt, so a
+// sens change shows up between attempts. dpi is what Momentum's mouse settings page stored, or null.
+function mouse() {
+	const dpi = Number.parseFloat($.persistentStorage.getItem<string>('settings.mouseDPI') ?? '');
+	return {
+		sensitivity: GameInterfaceAPI.GetSettingFloat('sensitivity'),
+		m_yaw: GameInterfaceAPI.GetSettingFloat('m_yaw'),
+		cl_yawspeed: GameInterfaceAPI.GetSettingFloat('cl_yawspeed'),
+		dpi: Number.isFinite(dpi) && dpi > 0 ? dpi : null
+	};
+}
+
+// mouse(), or null if the HUD can't read the settings; the attempt is recorded either way
+function mouseOrNull() {
+	let out = null;
+	guard('mouse', () => (out = mouse()));
+	return out;
+}
+
 // Runs fn and logs its first exception only, so a throw every frame can't flood yaw.log
 function guard(where: string, fn: () => void) {
 	try {
@@ -226,7 +245,8 @@ function startAttempt() {
 			player: meta ? meta.playerName : null,
 			replayFile: meta ? meta.filePath : null,
 			practice: MomentumPlayerAPI.IsInPracticeMode(),
-			version: MomentumAPI.GetVersionInfo()
+			version: MomentumAPI.GetVersionInfo(),
+			mouse: mouseOrNull()
 		},
 		rows: ring.slice(),
 		events: [],
@@ -757,4 +777,5 @@ $.RegisterForUnhandledEvent('ObserverTargetChanged', () => guard('target', () =>
 $.RegisterForUnhandledEvent('OnObservedTimerReplaced', () => guard('replaced', () => onTargetChange('replaced')));
 $.RegisterForUnhandledEvent('LevelInitPostEntity', () => guard('level', onLevelInit));
 
+guard('mouse', () => msg(`mouse ${JSON.stringify(mouse())}`));
 msg(`load format=${FORMAT} interval=${interval}`);

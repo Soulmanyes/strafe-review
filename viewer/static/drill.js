@@ -36,6 +36,8 @@ let fresh = new Set(); // keys that arrived live, flashed once
 let hoverKey = null;
 let renderToken = 0;
 let focusKey = null; // attempt picked for the focus panel; null = the latest
+let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for attempts that didn't record theirs
+let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 
 const key = (h) => `${h.dir}/${h.id}`;
 const mapKey = (h) => `${h.dir}|${h.interval}`;
@@ -174,7 +176,8 @@ function strafeStats(d, j, endIdx, t0) {
 			ratio: median(rs),
 			keys: (100 * ok) / (st.i1 - st.i0 + 1),
 			sw: off,
-			btn: st.btn > 0
+			btn: st.btn > 0,
+			turnDeg: strafeTurn(d, st)
 		};
 	});
 }
@@ -700,11 +703,13 @@ function usual(f, num) {
 }
 
 // Plain-words reasons a strafe did worse than usual, strongest first
-function strafeAdvice(s, u) {
+function strafeAdvice(s, u, m) {
 	const out = [];
 	if (Number.isFinite(s.ratio) && Number.isFinite(u.ratio)) {
-		if (s.ratio < u.ratio - 0.12) out.push(`you turned slower than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse faster`);
-		else if (s.ratio > u.ratio + 0.12) out.push(`you turned faster than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse slower`);
+		const t = s.turnDeg;
+		const cm = m && t.ticks >= 5 ? ` (the optimal turn needed about ${cmText(t.opt, m)} of mouse there, you moved ${cmText(t.did, m)})` : '';
+		if (s.ratio < u.ratio - 0.12) out.push(`you turned slower than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse faster${cm}`);
+		else if (s.ratio > u.ratio + 0.12) out.push(`you turned faster than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse slower${cm}`);
 	}
 	if (Number.isFinite(u.keys) && s.keys < u.keys - 10) out.push(`${KEY_NAME[s.dir]} was held on only ${s.keys.toFixed(0)} % of its ticks (usual ${u.keys.toFixed(0)} %)`);
 	if (s.sw !== null && (s.sw <= -3 || s.sw >= 1)) out.push(`you switched to ${KEY_NAME[s.dir]} ${Math.abs(s.sw)} tick${Math.abs(s.sw) === 1 ? '' : 's'} ${s.sw < 0 ? 'before' : 'after'} reversing the mouse (aim for 1 before)`);
@@ -735,6 +740,7 @@ function showFocus() {
 	}
 	const done = shown.own.filter((e) => e.complete && e !== f);
 	const b = best(done);
+	const m = mouseFor(f.h, mouseNow, dpi);
 	const medLand = median(done.map((e) => e.land));
 
 	// Verdict
@@ -764,7 +770,7 @@ function showFocus() {
 	}
 	const tips = [];
 	if (worst && worst.extra > 3) {
-		const why = strafeAdvice(worst.s, worst.u);
+		const why = strafeAdvice(worst.s, worst.u, m);
 		tips.push([
 			worst.extra,
 			`Strafe ${worst.s.num} (${SIDE_NAME[worst.s.dir]}) lost ${worst.extra.toFixed(1)} u/s more than usual` +
@@ -799,7 +805,7 @@ function showFocus() {
 	if (f.strafes.length) {
 		const t = el('table', 'strafes');
 		const hr = el('tr');
-		for (const h of ['Strafe', 'Ticks', 'Gain %', 'Lost u/s', 'Angle', 'Key held', 'Switch', '']) hr.append(el('th', '', h));
+		for (const h of ['Strafe', 'Ticks', 'Gain %', 'Lost u/s', 'Angle', 'Mouse', 'Key held', 'Switch', '']) hr.append(el('th', '', h));
 		t.append(hr);
 		const fmt = (x, dec = 0) => (x === null || !Number.isFinite(x) ? '–' : x.toFixed(dec));
 		for (const s of f.strafes) {
@@ -819,6 +825,7 @@ function showFocus() {
 				cell(fmt(s.pct, 2), fmt(u.pct, 2), 2, lostWorse && Number.isFinite(u.pct) && s.pct < u.pct - 10),
 				cell(fmt(s.lost, 1), fmt(u.lost, 1), 1, lostWorse),
 				cell(fmt(s.ratio, 2), fmt(u.ratio, 2), 2, lostWorse && Number.isFinite(u.ratio) && Math.abs(s.ratio - u.ratio) > 0.12),
+				m && s.turnDeg.ticks ? cell(cmText(s.turnDeg.did, m), `opt ${cmText(s.turnDeg.opt, m)}`) : el('td', 'muted', '–'),
 				cell(`${fmt(s.keys)} %`, fmt(u.keys), 0, lostWorse && Number.isFinite(u.keys) && s.keys < u.keys - 10),
 				cell(s.sw === null ? '–' : `${s.sw > 0 ? '+' : ''}${s.sw}`, s.num > 1 ? 'aim -1' : undefined, 0, s.sw !== null && (s.sw <= -3 || s.sw >= 1)),
 				el('td', 'muted', u.runs ? `usual from ${u.runs}` : '')
@@ -827,6 +834,15 @@ function showFocus() {
 		}
 		box.append(t);
 		box.append(el('div', 'muted small', 'Grey numbers = your usual (median of the other landed attempts shown). Angle = median yawRatio in the strafe (1 = optimal). Switch = key switch in ticks from the mouse reversal; -1 is one tick before.'));
+		box.append(
+			el(
+				'div',
+				'muted small',
+				!m
+					? 'Mouse: type your mouse DPI in at the top to see each strafe in centimetres of mouse movement.'
+					: `Mouse = how far you moved the mouse in the strafe, next to the optimal turn over the same ticks, at sens ${m.sens} and ${m.dpi} DPI${m.recorded ? '' : ' (the game\'s current sens: this attempt was recorded before sens was saved with it)'}. Ticks with +left/+right held are left out.`
+			)
+		);
 	}
 	if (f.mistakes.length > 1) {
 		const ml = el('div', 'more');
@@ -1072,7 +1088,31 @@ function live() {
 	});
 }
 
-loadList().then(() => {
+// cm per 360° at the newest own attempt's sens, to check against Momentum's own mouse settings page
+function showCm360() {
+	const h = list.find((a) => a.label !== 'replay');
+	const m = mouseFor(h, mouseNow, dpi);
+	$('cm360').textContent = m ? `${(360 * m.cmPerDeg).toFixed(1)} cm/360° at sens ${m.sens}` : '';
+}
+
+$('dpi').onchange = () => {
+	dpi = Number.parseFloat($('dpi').value);
+	saveDpi(dpi);
+	if (!(dpi > 0)) dpi = null;
+	showCm360();
+	showFocus();
+};
+
+Promise.all([
+	loadList(),
+	fetch('/api/mouse')
+		.then((r) => r.json())
+		.then((v) => (mouseNow = v))
+		.catch(() => {})
+]).then(() => {
+	dpi = loadDpi() ?? dpiFromHeads(list);
+	if (dpi) $('dpi').value = dpi;
+	showCm360();
 	render();
 	live();
 });

@@ -198,6 +198,7 @@ h2 { font-size: 15px; margin: 0; }
 .ck input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 .ck .help { color: var(--muted); font-size: 12px; margin: 3px 0 6px 24px; }
 .ck .param { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 0 0 24px; font-size: 13px; }
+#dpi,
 .ck .param input {
 	width: 80px;
 	background: var(--bg);
@@ -207,6 +208,7 @@ h2 { font-size: 15px; margin: 0; }
 	padding: 3px 6px;
 	font: 13px ui-monospace, monospace;
 }
+#dpi:focus,
 .ck .param input:focus { outline: none; border-color: var(--accent); }
 .ck .param.changed input { border-color: var(--replay); }
 #align-hint { flex-basis: 100%; margin-left: 0; color: var(--text); }

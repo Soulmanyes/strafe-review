@@ -63,6 +63,8 @@ let hoverIdx = -1;
 let drag = null;
 let gutterText = []; // [text, y]: drawn after the lane clip is lifted
 let selMistake = null; // the mistake picked in the list, outlined on the graph
+let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for attempts that didn't record theirs
+let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how }: the comparison drawn dashed pink
 const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps }
 const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
@@ -170,6 +172,7 @@ async function open(dir, id) {
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: a.postRows ? d.n - 1 - a.postRows : d.n - 1 };
 	location.hash = `${dir}/${id}`;
+	showCm360();
 	hoverIdx = -1;
 	selMistake = null;
 	fillCompare();
@@ -900,6 +903,7 @@ function drawHover() {
 		['speed', f(d.speed[i], 1)],
 		['gain', `${f(d.gain[i], 3)} / ${f(d.ideal[i], 3)}`],
 		['yaw', `${f(d.yawd[i], 2)}° (avg ${f(d.yaws[i], 2)}, opt ${f(d.opt[i], 2)})`],
+		...mouseField(i),
 		['ratio', f(d.ratio[i], 3)],
 		['keys', keys || 'none'],
 		['ideal', d.ideal_key[i] > 0 ? 'A' : d.ideal_key[i] < 0 ? 'D' : '–']
@@ -1019,10 +1023,42 @@ $('reset-checks').onclick = () => {
 };
 new ResizeObserver(() => draw()).observe($('plot'));
 
+// Turn speed in mouse terms for the readout: the 5-tick average and the optimal, in cm/s. A replay's
+// turn is shown at your sens, as the mouse speed you'd need to copy it.
+function mouseField(i) {
+	const m = mouseFor(cur.head, mouseNow, dpi);
+	const d = cur.d;
+	if (!m || !Number.isFinite(d.yaws[i]) || turnBtn(d, i)) return [];
+	const opt = Number.isFinite(d.opt[i]) ? `, opt ${cmPerSec(d.opt[i], cur.head.interval, m).toFixed(1)}` : '';
+	const whose = cur.head.label === 'replay' ? ' at your sens' : m.recorded ? '' : ' at current sens';
+	return [['mouse', `${cmPerSec(Math.abs(d.yaws[i]), cur.head.interval, m).toFixed(1)} cm/s${opt}${whose}`]];
+}
+
+function showCm360() {
+	const m = mouseFor(cur ? cur.head : list.find((a) => a.label !== 'replay'), mouseNow, dpi);
+	$('cm360').textContent = m ? `${(360 * m.cmPerDeg).toFixed(1)} cm/360° at sens ${m.sens}` : '';
+}
+
+$('dpi').onchange = () => {
+	dpi = Number.parseFloat($('dpi').value);
+	saveDpi(dpi);
+	if (!(dpi > 0)) dpi = null;
+	showCm360();
+};
+
 // A new attempt saved by the collector shows up in the list at once (the open one stays open)
 new EventSource('/api/events').addEventListener('attempt', loadList);
 
-loadList().then(async () => {
+Promise.all([
+	loadList(),
+	fetch('/api/mouse')
+		.then((r) => r.json())
+		.then((v) => (mouseNow = v))
+		.catch(() => {})
+]).then(async () => {
+	dpi = loadDpi() ?? dpiFromHeads(list);
+	if (dpi) $('dpi').value = dpi;
+	showCm360();
 	// #<map>/<id>/j1 (from the drill page) opens the attempt zoomed to jump 1
 	const [dir, id, what] = location.hash.slice(1).split('/');
 	if (dir && id) {
