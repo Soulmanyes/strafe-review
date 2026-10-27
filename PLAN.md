@@ -61,6 +61,12 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Own replays live in `momtv/local/<map>/*.mtv`, but only for finished runs or stages.
   - Downloaded online replays live in `momtv/online/<id>/*.mtv`.
   - Both start with the header `MMTV`, version 2.
+  - Finished own runs also land in `momtv/local/<map>/temp/` even with `mom_tv_replay_save_mode 1` (5 bhop_ambience files there on 2026-10-27).
+- **`.mtv` contents (checked 2026-10-27).**
+  - Header: map name, a hash, player name, SteamID, then a length-prefixed JSON of splits and stats (jumps, max speed). The public website repo (`momentum-mod/website`, MIT, `libs/formats/replay`) reads only this part; it calls the C++ layout in `momtv.h` "licensee-only".
+  - Body: Valve LZMA (`LZMA` magic, real size, packed size, 5 props bytes), opens with Python `lzma` `FORMAT_ALONE` after rebuilding the header. Inside: send-table names for `CMomentumPlayer` and others (`m_vecOrigin`, `m_angEyeAngles[0/1]`, `m_vecVelocity[0-2]`, `m_nPhysicalButtons`, `m_fFlags`, `m_iLandTick`, `m_iJumpTick`, ...), then a bit-packed entity delta stream.
+  - So the file holds everything the recorder needs, but the stream has no bit widths or encodings. Decoding it means reverse-engineering closed game code, and it could break on any update. Not pursued for now.
+- **Unfocused game.** Source sleeps 50 ms per frame when the window has no focus (`engine_no_focus_sleep 50`), about 20 fps. A replay watched while tabbed out records only every 5-6th tick (player B replay, 2026-10-27: 634 of 1878 run ticks missed).
 - **No position API** was found in the HUD scripts. The path is built up from velocity times the tick interval instead.
 
 ## Recording rules
