@@ -76,7 +76,7 @@ for (const { a, d, jumps, endIdx } of loaded) {
 	}
 	const vs = (takeoffs[`${a.map}@${a.interval}`] || []).filter((t) => t.id !== a.id).map((t) => t.v);
 	const baseline = vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
-	const found = runChecks(d, jumps, endIdx, allOn, baseline);
+	const found = runChecks(d, jumps, endIdx, allOn, baseline, !own);
 	const per = {};
 	for (const m of found) {
 		counts[m.check]++;

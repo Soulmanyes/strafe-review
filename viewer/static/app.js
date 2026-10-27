@@ -172,7 +172,7 @@ function takeoffBaseline(h) {
 
 function findMistakes() {
 	if (!cur) return;
-	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head));
+	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head), cur.head.label === 'replay');
 	if (selMistake && !cur.mistakes.some((m) => m.check === selMistake.check && m.i0 === selMistake.i0)) selMistake = null;
 	showMistakes();
 }
@@ -182,7 +182,8 @@ function showMistakes() {
 	box.replaceChildren();
 	const ms = cur ? cur.mistakes : [];
 	const total = ms.reduce((t, m) => t + m.lost, 0);
-	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all` : '';
+	const skipped = cur && cur.head.label === 'replay' ? " · key timing checks are skipped for replays (their keys run ahead of the turn)" : '';
+	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all${skipped}` : '';
 	if (cur && !ms.length) box.textContent = 'No mistakes found with the current settings.';
 	for (const m of ms) {
 		const b = document.createElement('button');

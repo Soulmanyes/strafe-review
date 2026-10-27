@@ -196,6 +196,7 @@ Each check can be switched on or off in the viewer settings. Thresholds start as
   - Switch: offset of the nearest key switch (within 8 ticks) from the reversal; flagged at 4+ ticks early or 2+ late.
   - W held in air: off; 5+ air ticks with W.
 - **Re-measured with this split** (15 own attempts): switch offsets -7: 1, -6: 1, -5: 4, -4: 5, -3: 8, -2: 30, -1: 39, 0: 46, 1: 20, 2: 4, 3: 7, 4: 3, 7: 1 (169); middle strafes median 31 (5-95 %: 20-49). The earlier 132-switch figure came from a different split.
+- **Replays skip key timing** (late first strafe, wrong key, no key, switch): the WR replay's switches all sat 3-7 ticks before the turn (own runs centre on -1), so its keys run ahead of its view angles. Before this, the replay listed 57 mistakes. The list now scrolls in its own 360 px box.
 - **Too narrow at 0.00** means the yaw stopped in the middle of a strafe (keys held on 25-57 % of those ticks, gain 4-10 of 35-44 u/s ideal). The entry then says "barely turning".
 - **First counts** with everything on (16 attempts incl. 1 replay): early 5, late first 11, takeoff 3, wide 12, narrow 18, uneven 8, imbalance 1, wrong key 15 (13 in the replay, whose keys seem to lag the turn), no key 9, switch 54 (36 in the replay). Jump 1 of own runs: 4 switch entries (switched 4-6 ticks early on the first reversal after the `+left` prestrafe).
 
