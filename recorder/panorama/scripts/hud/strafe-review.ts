@@ -660,9 +660,9 @@ function showLine(head: string, strafes: { dir: number; pct: number }[], mistake
 		const ctx = $.GetContextPanel();
 		const root = ctx.GetParent() ?? ctx;
 		root.FindChildTraverse('StrafeReviewLine')?.DeleteAsync(0);
-		// Panorama px are 1080p units, so 150px below the centre stays put at any resolution
+		// Top middle of the screen (Panorama px are 1080p units)
 		linePanel = $.CreatePanel('Panel', root, 'StrafeReviewLine', {
-			style: 'horizontal-align: center; vertical-align: center; margin-top: 150px; flow-children: down;'
+			style: 'horizontal-align: center; vertical-align: top; margin-top: 20px; flow-children: down;'
 		});
 	}
 	const panel = linePanel;
