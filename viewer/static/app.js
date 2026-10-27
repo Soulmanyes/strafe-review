@@ -149,7 +149,7 @@ async function loadList() {
 		fillCompare();
 		const h = choiceHead();
 		if ((h ? `${h.dir}/${h.id}` : null) !== (ghost ? ghost.key : null)) {
-			await setGhost();
+			await setGhostSafe();
 			showHead();
 			draw();
 		}
@@ -173,7 +173,7 @@ async function open(dir, id) {
 	hoverIdx = -1;
 	selMistake = null;
 	fillCompare();
-	await setGhost();
+	await setGhostSafe();
 	showHead();
 	markSelected();
 	findMistakes();
@@ -280,13 +280,23 @@ async function setGhost() {
 	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how };
 }
 
+// A ghost that fails to load must not stop the open attempt from showing
+async function setGhostSafe() {
+	try {
+		await setGhost();
+	} catch (e) {
+		console.error('ghost not loaded', e);
+		ghost = null;
+	}
+}
+
 async function compareChanged() {
 	if (!cur) return;
 	const ch = loadChoices();
 	ch[mapKey(cur.head)] = $('cmp-sel').value;
 	localStorage.setItem(CMP_KEY, JSON.stringify(ch));
 	localStorage.setItem(ALIGN_KEY, $('align').value);
-	await setGhost();
+	await setGhostSafe();
 	showHead();
 	draw();
 }
