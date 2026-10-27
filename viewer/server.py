@@ -8,7 +8,8 @@ Routes:
   /drill                     the jump-1 drill page (viewer/static/drill.html)
   /static/<file>             page files
   /api/attempts              every saved attempt's header (no rows, plus rowCount, dir,
-                             j1Takeoff, the jump-1 takeoff speed, landed, jumps 1+ that
+                             j1Takeoff, the jump-1 takeoff speed, j1Land, its landing speed
+                             (null if it didn't land before the run end), landed, jumps 1+ that
                              landed before the run end, and runGaps, missed ticks inside
                              the run), newest first
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
@@ -38,8 +39,8 @@ PING = 15  # seconds between keep-alive comments
 
 
 def jump1_takeoff(data):
-    """(takeoff, landed): horizontal speed at jump 1's takeoff and the number of jumps from jump 1 on
-    that landed before the run end, found the same way as findJumps() in static/data.js.
+    """(takeoff, land, landed): horizontal speed at jump 1's takeoff, at its landing (None if it didn't
+    land before the run end) and the number of jumps from jump 1 on that landed before the run end, found the same way as findJumps() in static/data.js.
 
     Ground is a row with vz exactly 0 that isn't an apex (rising before, falling after). A takeoff is
     vz going from 0.5 or less to over 100. Jump 1 is the air segment in progress at the timer start
@@ -48,7 +49,7 @@ def jump1_takeoff(data):
     cols = data.get("cols") or []
     rows = data.get("rows") or ""
     if not rows or not all(c in cols for c in ("vx", "vy", "vz")):
-        return None, 0
+        return None, None, 0
     ix, iy, iz = cols.index("vx"), cols.index("vy"), cols.index("vz")
     vals = [r.split(",") for r in rows.split(";")]
     vx = [float(v[ix]) for v in vals]
@@ -67,10 +68,11 @@ def jump1_takeoff(data):
         jumps.append((s, e))
     j1 = next((j for j in jumps if j[0] <= p < j[1]), None) or next((j for j in jumps if j[0] >= p), None)
     if j1 is None:
-        return None, 0
+        return None, None, 0
     end = n - 1 - (data.get("postRows") or 0)
     landed = sum(1 for j in jumps[jumps.index(j1):] if j[1] <= end and j[1] < n)
-    return round(math.hypot(vx[j1[0]], vy[j1[0]]), 2), landed
+    land = round(math.hypot(vx[j1[1] - 1], vy[j1[1] - 1]), 2) if j1[1] <= end and j1[1] < n else None
+    return round(math.hypot(vx[j1[0]], vy[j1[0]]), 2), land, landed
 
 
 def run_gaps(data):
@@ -103,7 +105,7 @@ def head(path):
         return got[2]
     with gzip.open(path, "rt") as f:
         data = json.load(f)
-    data["j1Takeoff"], data["landed"] = jump1_takeoff(data)
+    data["j1Takeoff"], data["j1Land"], data["landed"] = jump1_takeoff(data)
     data["runGaps"] = run_gaps(data)
     rows = data.pop("rows", "")
     data["rowCount"] = rows.count(";") + 1 if rows else 0

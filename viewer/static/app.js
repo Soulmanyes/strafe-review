@@ -23,7 +23,8 @@ const COL = {
 	ground: '#c8d2e61f',
 	pre: '#6c9cff14',
 	post: '#ff5c5c12',
-	hover: '#ffffffcc'
+	hover: '#ffffffcc',
+	ghost: '#ff79c6'
 };
 const GUTTER = 128; // lane titles and y labels
 const RIGHT_PAD = 12;
@@ -62,6 +63,10 @@ let hoverIdx = -1;
 let drag = null;
 let gutterText = []; // [text, y]: drawn after the lane clip is lifted
 let selMistake = null; // the mistake picked in the list, outlined on the graph
+let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how }: the comparison drawn dashed pink
+const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps }
+const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
+const ALIGN_KEY = 'strafe-review-align';
 const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
 // A drill: an own attempt that didn't finish and landed this many jumps or fewer (jump 1 or SSJ practice)
@@ -140,6 +145,15 @@ async function loadList() {
 	}
 	markSelected();
 	findMistakes(); // the takeoff baseline comes from the list
+	if (cur) {
+		fillCompare();
+		const h = choiceHead();
+		if ((h ? `${h.dir}/${h.id}` : null) !== (ghost ? ghost.key : null)) {
+			await setGhost();
+			showHead();
+			draw();
+		}
+	}
 }
 
 function markSelected() {
@@ -158,10 +172,123 @@ async function open(dir, id) {
 	location.hash = `${dir}/${id}`;
 	hoverIdx = -1;
 	selMistake = null;
+	fillCompare();
+	await setGhost();
 	showHead();
 	markSelected();
 	findMistakes();
 	whole();
+}
+
+// ---------- compare (ghost) ----------
+
+const mapKey = (h) => `${h.dir}|${h.interval}`;
+
+function loadChoices() {
+	try {
+		return JSON.parse(localStorage.getItem(CMP_KEY)) || {};
+	} catch {
+		return {};
+	}
+}
+
+// Recordings the open attempt can be compared with: same map and tickrate (ticks wouldn't line up
+// otherwise), not itself, no replay fragments
+function candidates() {
+	if (!cur) return [];
+	const k = mapKey(cur.head);
+	return list.filter((h) => mapKey(h) === k && h.id !== cur.head.id && !isFragment(h));
+}
+
+// The picks that follow the saved attempts: each resolves to one recording, or null
+function presets(cands) {
+	const own = cands.filter((h) => h.label !== 'replay');
+	const reps = cands.filter((h) => h.label === 'replay');
+	const minBy = (hs, f) => hs.reduce((b, h) => (Number.isFinite(f(h)) && (!b || f(h) < f(b)) ? h : b), null);
+	const fin = (h) => (h.reason === 'finish' && h.runTime ? h.runTime : NaN);
+	// A replay recording can stop before the run's end (its runTime is then short), so only replays that
+	// got within 75 % of the longest replay time count, and the shortest of those wins
+	const longest = Math.max(0, ...reps.map((h) => h.runTime || 0));
+	const topRep = minBy(reps, (h) => (h.runTime >= 0.75 * longest ? h.runTime : NaN));
+	return [
+		{ id: 'p:fastest', name: 'Your fastest finish', h: minBy(own, fin), fact: (h) => `${h.runTime.toFixed(2)} s` },
+		{ id: 'p:bestj1', name: 'Your best jump 1', h: minBy(own, (h) => (h.j1Land == null ? NaN : -h.j1Land)), fact: (h) => `lands ${h.j1Land.toFixed(0)} u/s` },
+		{ id: 'p:replay', name: 'Top replay', h: topRep, fact: (h) => `${h.player || 'unknown player'}${h.runTime ? ` · ${h.runTime.toFixed(2)} s` : ''}` }
+	];
+}
+
+function candText(h) {
+	const kind = isDrill(h) ? `Drill · ${h.landed} jump${h.landed === 1 ? '' : 's'}` : labelText(h);
+	const end = h.reason === 'finish' && h.runTime ? `${h.runTime.toFixed(2)} s` : REASONS[h.reason] || h.reason || '?';
+	const j1 = h.j1Land == null ? '' : ` · jump 1 lands ${h.j1Land.toFixed(0)}`;
+	return `${kind} · ${when(h.started)} · ${end}${j1}`;
+}
+
+function fillCompare() {
+	const sel = $('cmp-sel');
+	sel.replaceChildren(new Option('None', 'none'));
+	if (!cur) return;
+	const cands = candidates();
+	for (const p of presets(cands)) {
+		const o = new Option(p.h ? `${p.name}: ${p.fact(p.h)}` : `${p.name}: none saved`, p.id);
+		o.disabled = !p.h;
+		sel.append(o);
+	}
+	const grp = document.createElement('optgroup');
+	grp.label = 'Pick one';
+	for (const h of cands) grp.append(new Option(candText(h), `id:${h.id}`));
+	sel.append(grp);
+	const want = loadChoices()[mapKey(cur.head)] || 'none';
+	sel.value = [...sel.options].some((o) => o.value === want && !o.disabled) ? want : 'none';
+}
+
+// The recording the picker points at, or null
+function choiceHead() {
+	const v = $('cmp-sel').value;
+	const cands = candidates();
+	if (v.startsWith('id:')) return cands.find((h) => h.id === v.slice(3)) || null;
+	const p = presets(cands).find((x) => x.id === v);
+	return p ? p.h : null;
+}
+
+async function setGhost() {
+	const h = cur && choiceHead();
+	if (!h) {
+		ghost = null;
+		return;
+	}
+	const key = `${h.dir}/${h.id}`;
+	let g = ghostCache.get(key);
+	if (!g) {
+		const res = await fetch(`/api/attempt/${encodeURIComponent(h.dir)}/${encodeURIComponent(h.id)}`);
+		if (!res.ok) {
+			ghost = null;
+			return;
+		}
+		const a = await res.json();
+		a.dir = h.dir;
+		const d = parse(a);
+		g = { head: a, d, jumps: findJumps(d, a.preRows).jumps };
+		ghostCache.set(key, g);
+	}
+	const al = alignGhost(cur, g, $('align').value);
+	const gd = Object.assign({}, g.d, { x: al.x, gap: al.gap });
+	const order = [];
+	for (let i = 0; i < gd.n; i++) if (Number.isFinite(gd.x[i])) order.push(i);
+	const v = $('cmp-sel').value;
+	const how = v.startsWith('p:') ? presets(candidates()).find((p) => p.id === v).name : 'picked';
+	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how };
+}
+
+async function compareChanged() {
+	if (!cur) return;
+	const ch = loadChoices();
+	ch[mapKey(cur.head)] = $('cmp-sel').value;
+	localStorage.setItem(CMP_KEY, JSON.stringify(ch));
+	localStorage.setItem(ALIGN_KEY, $('align').value);
+	await setGhost();
+	showHead();
+	draw();
 }
 
 // ---------- mistakes ----------
@@ -300,11 +427,25 @@ function showHead() {
 		when(h.started)
 	].join(' · ');
 	el.append(name, labelChip(h), reasonChip(h), facts);
-	if (cur.d.derived) {
-		const note = document.createElement('span');
-		note.className = 'chip replay';
-		note.textContent = 'Gain and angle rebuilt from speed (no tick stats in this recording)';
-		el.append(note);
+	const note = (cls, text) => {
+		const n = document.createElement('span');
+		n.className = `chip ${cls}`;
+		n.textContent = text;
+		el.append(n);
+	};
+	if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
+	if (ghost) {
+		const gh = ghost.head;
+		const end = gh.reason === 'finish' && gh.runTime ? `${gh.runTime.toFixed(2)} s` : REASONS[gh.reason] || gh.reason || '?';
+		const al =
+			ghost.mode === 'jump'
+				? `aligned per jump (${ghost.matched} matched)`
+				: $('align').value === 'jump'
+					? 'aligned on timer start (no jump in common)'
+					: 'aligned on timer start';
+		note('ghost', `Ghost (dashed pink): ${labelText(gh)} · ${ghost.how} · ${when(gh.started)} · ${end} · ${al}`);
+		if (ghost.d.derived && !cur.d.derived) note('ghost', 'Ghost gain and angle rebuilt from speed');
+		if (gh.label === 'replay') note('ghost', 'Ghost keys not drawn: replay keys run ahead of the angles');
 	}
 }
 
@@ -480,7 +621,7 @@ function line(g, d, i0, i1, val, Y, color, width, ok = () => true) {
 	let pen = false;
 	for (let i = i0; i <= i1; i++) {
 		const v = val(i);
-		if (!Number.isFinite(v) || !ok(i)) {
+		if (!Number.isFinite(v) || !Number.isFinite(d.x[i]) || !ok(i)) {
 			pen = false;
 			continue;
 		}
@@ -519,6 +660,14 @@ const air = (d) => (i) => !d.ground[i];
 // Scales come from strafing rows only: in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30)
 const strafingRows = (d) => (i) => !d.ground[i] && d.speed[i] > 100;
 
+// The ghost's line in a lane: dashed, over all its rows (the lane clip drops what is off screen)
+function ghostLine(g, val, Y, ok) {
+	if (!ghost) return;
+	g.setLineDash([6, 4]);
+	line(g, ghost.gd, 0, ghost.gd.n - 1, val, Y, COL.ghost, 1.5, ok && ok(ghost.gd));
+	g.setLineDash([]);
+}
+
 const LANE_DRAW = {
 	jumps(g, l, d) {
 		g.font = '600 12px system-ui, sans-serif';
@@ -533,9 +682,29 @@ const LANE_DRAW = {
 			g.strokeStyle = j.num ? `hsl(${hue} 65% 62%)` : COL.border;
 			g.strokeRect(X0 + 1.5, l.y + 4.5, X1 - X0 - 3, l.h - 9);
 			const label = `${j.num ? j.num : 'pre'} · ${Number.isFinite(j.pct) ? j.pct.toFixed(2) : '?'}%`;
-			if (g.measureText(label).width < X1 - X0 - 8) {
+			const gj = ghost && j.num ? ghost.jumps.find((x) => x.num === j.num) : null;
+			const full = gj && Number.isFinite(gj.pct) ? `${label} · ghost ${gj.pct.toFixed(2)}%` : label;
+			for (const t of [full, label]) {
+				if (g.measureText(t).width >= X1 - X0 - 8) continue;
 				g.fillStyle = COL.text;
-				g.fillText(label, X0 + 6, l.y + l.h / 2 + 4);
+				g.fillText(t, X0 + 6, l.y + l.h / 2 + 4);
+				break;
+			}
+		}
+		// the ghost's jumps: a pink bar along the bottom of the strip, where its air time sits
+		if (ghost) {
+			g.fillStyle = COL.ghost;
+			for (const j of ghost.jumps) {
+				if (!j.num) continue;
+				let a = NaN;
+				let b = NaN;
+				for (let i = j.s; i < j.e; i++) {
+					const x = ghost.gd.x[i];
+					if (!Number.isFinite(x)) continue;
+					if (!Number.isFinite(a)) a = x;
+					b = x;
+				}
+				if (Number.isFinite(a)) g.fillRect(px(a - 0.5) + 1, l.y + l.h - 7, px(b + 0.5) - px(a - 0.5) - 2, 3);
 			}
 		}
 		if (px(0) > GUTTER) {
@@ -558,6 +727,7 @@ const LANE_DRAW = {
 			g.fillRect(px(d.x[i] - 0.5), Y(o * 1.15), Math.max(px(d.x[i] + 0.5) - px(d.x[i] - 0.5), 1), Y(o * 0.85) - Y(o * 1.15));
 		}
 		line(g, d, i0, i1, (i) => Math.abs(d.yawd[i]), Y, COL.raw, 1);
+		ghostLine(g, (i) => Math.abs(ghost.gd.yaws[i]), Y, air);
 		line(g, d, i0, i1, (i) => d.opt[i], Y, COL.opt, 1.5);
 		line(g, d, i0, i1, (i) => Math.abs(d.yaws[i]), Y, COL.line, 2, air(d));
 		yLabels(l, Y, [0, hi / 2, hi], (v) => v.toFixed(1));
@@ -576,6 +746,7 @@ const LANE_DRAW = {
 			const y1 = Y(c);
 			g.fillRect(px(d.x[i] - 0.5), Math.min(y0, y1), Math.max(tickPx, 1), Math.abs(y1 - y0));
 		}
+		ghostLine(g, (i) => Math.min(ghost.gd.ratio[i], 2), Y, air);
 		g.strokeStyle = COL.opt;
 		g.lineWidth = 1.5;
 		g.beginPath();
@@ -602,6 +773,7 @@ const LANE_DRAW = {
 			g.fillRect(X0, Y(d.ideal[i]), Math.max(px(d.x[i] + 0.5) - X0, 1), Y(d.gain[i]) - Y(d.ideal[i]));
 		}
 		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.opt, 1.5, isAir);
+		ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
 		line(g, d, i0, i1, (i) => d.gain[i], Y, COL.line, 2, isAir);
 		yLabels(l, Y, lo < 0 ? [lo, 0, hi] : [0, hi / 2, hi], (v) => v.toFixed(2));
 	},
@@ -629,11 +801,24 @@ const LANE_DRAW = {
 		if (want && !(b & want) && !(b & (BIT.LEFT | BIT.RIGHT))) bar(4, COL.bad);
 			if (b & (BIT.LEFT | BIT.RIGHT)) bar(5, COL.turn);
 		}
+		// the ghost's A and D: a thin pink strip along the bottom of those rows (not for replays, whose
+		// keys run 3-7 ticks ahead of the angles)
+		if (ghost && ghost.head.label !== 'replay') {
+			const gd = ghost.gd;
+			g.fillStyle = COL.ghost;
+			for (const i of ghost.order) {
+				const X = px(gd.x[i] - 0.5);
+				if (X < GUTTER - tickPx || X > base.clientWidth) continue;
+				if (gd.buttons[i] & BIT.MOVELEFT) g.fillRect(X, rowY(1) + rh - 4, w, 2);
+				if (gd.buttons[i] & BIT.MOVERIGHT) g.fillRect(X, rowY(2) + rh - 4, w, 2);
+			}
+		}
 	},
 
 	speed(g, l, d, i0, i1) {
 		const hi = Math.max(50, quantile(d, i0, i1, (i) => d.speed[i], 0.995) * 1.08);
 		const Y = yMap(l, 0, hi);
+		ghostLine(g, (i) => ghost.gd.speed[i], Y);
 		line(g, d, i0, i1, (i) => d.speed[i], Y, COL.line, 2);
 		g.fillStyle = COL.opt;
 		for (const j of cur.jumps) {
@@ -716,6 +901,18 @@ function drawHover() {
 		['ideal', d.ideal_key[i] > 0 ? 'A' : d.ideal_key[i] < 0 ? 'D' : '–']
 	];
 	if (d.gap[i] > 0) fields.push(['missed before', String(d.gap[i])]);
+	if (ghost) {
+		const gd = ghost.gd;
+		const gi = ghostNearest(gd.x, ghost.order, d.x[i], 0.5);
+		const gj = gi < 0 ? null : ghost.jumps.find((jj) => gi >= jj.s && gi < jj.e);
+		const where = gi < 0 ? '' : gd.ground[gi] ? 'ground' : gj ? (gj.num ? `jump ${gj.num}` : 'pre-jump') : 'air';
+		fields.push([
+			'ghost',
+			gi < 0
+				? 'no row here'
+				: `${where} · speed ${f(gd.speed[gi], 1)} · gain ${f(gd.gain[gi], 3)} / ${f(gd.ideal[gi], 3)} · yaw avg ${f(gd.yaws[gi], 2)} · ratio ${f(gd.ratio[gi], 3)}`
+		]);
+	}
 	$('readout').innerHTML = fields.map(([k, v]) => `<span><span class="k">${k}</span> ${v}</span>`).join('');
 }
 
@@ -787,6 +984,9 @@ $('jump1').onclick = () => {
 	if (cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 };
 $('refresh').onclick = loadList;
+$('align').value = localStorage.getItem(ALIGN_KEY) === 'timer' ? 'timer' : 'jump';
+$('cmp-sel').onchange = compareChanged;
+$('align').onchange = compareChanged;
 $('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
 $('show-drills').onchange = () => {
 	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');

@@ -111,4 +111,66 @@ function runGaps(a, d) {
 	return g;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps };
+// Lines a comparison recording (the ghost) up with the open one. Returns its x per row (NaN for rows
+// left out) and a gap array that also breaks the line where the shift changes.
+//  - 'timer': both start at the timer start, no shift.
+//  - 'jump': jumps are matched by number. Jump k's air keeps its own spacing, shifted so its takeoff sits
+//    on the open attempt's jump-k takeoff. The ground after it is stretched or squeezed to end at the next
+//    matched takeoff; air or ground that would run past it is left out. Rows before jump 1 take the
+//    jump-1 shift, rows after the last matched jump keep the last shift.
+// Falls back to 'timer' (mode in the result says so) when no jump number is in both.
+function alignGhost(cur, cmp, mode) {
+	const d = cmp.d;
+	const x = new Float64Array(d.n);
+	const gap = new Float64Array(d.n);
+	const byNum = new Map(cur.jumps.filter((j) => j.num > 0).map((j) => [j.num, j]));
+	const pairs = cmp.jumps.filter((j) => j.num > 0 && byNum.has(j.num)).map((j) => ({ c: j, o: byNum.get(j.num) }));
+	if (mode !== 'jump' || !pairs.length) {
+		x.set(d.x);
+		gap.set(d.gap);
+		return { x, gap, mode: 'timer', matched: 0 };
+	}
+	let k = 0; // pair whose takeoff is at or before row i (pair 0 also covers rows before it)
+	let prevSeg = -1;
+	for (let i = 0; i < d.n; i++) {
+		while (k + 1 < pairs.length && pairs[k + 1].c.s <= i) k++;
+		const { c, o } = pairs[k];
+		const off = o.x0 - c.x0;
+		const next = k + 1 < pairs.length && i >= c.s ? pairs[k + 1] : null;
+		let v = d.x[i] + off;
+		let seg = 2 * k;
+		if (next) {
+			const end = next.o.x0; // the next matched takeoff of the open attempt
+			if (i >= c.e) {
+				// ground after the landing: [landing, next takeoff) of the ghost onto [landing + shift, end)
+				seg = 2 * k + 1;
+				const a0 = d.x[c.e] ?? d.x[i];
+				const a1 = next.c.x0;
+				const A = a0 + off;
+				v = A >= end || a1 <= a0 ? NaN : A + ((d.x[i] - a0) * (end - A)) / (a1 - a0);
+			}
+			if (!(v < end)) v = NaN;
+		}
+		x[i] = v;
+		gap[i] = d.gap[i] > 0 || seg !== prevSeg || (i > 0 && !Number.isFinite(x[i - 1])) ? Math.max(d.gap[i], 1) : 0;
+		if (i === 0) gap[i] = 0;
+		prevSeg = seg;
+	}
+	return { x, gap, mode: 'jump', matched: pairs.length };
+}
+
+// Ghost row nearest to x, among rows with a finite x (those only ever go up), or -1 beyond maxDist
+function ghostNearest(gx, order, xv, maxDist) {
+	if (!order.length) return -1;
+	let lo = 0;
+	let hi = order.length - 1;
+	while (hi - lo > 1) {
+		const mid = (lo + hi) >> 1;
+		if (gx[order[mid]] < xv) lo = mid;
+		else hi = mid;
+	}
+	const i = Math.abs(gx[order[lo]] - xv) <= Math.abs(gx[order[hi]] - xv) ? order[lo] : order[hi];
+	return Math.abs(gx[i] - xv) <= maxDist ? i : -1;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps, alignGhost, ghostNearest };

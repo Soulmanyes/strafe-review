@@ -270,6 +270,29 @@ The owner asked for a separate page that updates by itself the moment an attempt
 
 - **WR / top-replay overlay:** watch a top player's replay in game and the recorder records it. Their jump 1 is drawn as a ghost line over yours in every lane.
 - **Your best attempt ghost:** your best jump 1 on this map, drawn behind the current attempt.
+- **Compare specific recordings (owner, 2026-10-27):** pick any own run or replay on the same map and tickrate and draw it over the open one. Built with the ghost overlay below.
+- **Alignment (owner's pick, 2026-10-27):** a toolbar switch between "per jump" (default) and "timer start".
+
+#### Ghost overlay v1 (2026-10-27)
+
+- **Picker.** "Compare" sits in the main toolbar. It offers None, three presets and "Pick one".
+  - The presets are "Your fastest finish", "Your best jump 1" (highest jump-1 landing) and "Top replay".
+  - "Pick one" lists every recording on the same map and tickrate except the open one and replay fragments.
+  - The choice is saved per map + tickrate in the browser (`strafe-review-compare`), and the alignment in `strafe-review-align`. Presets move with new attempts: when the SSE list reload changes what a preset points at, the ghost reloads.
+  - The URL hash is unchanged, so `#map/id/j1` from the drill page still works.
+- **Top replay.** A replay recording can stop early, which makes its `runTime` short. Only replays within 75 % of the longest replay time count, and the shortest of those wins. Top players on bhop_ambience land 24 jumps where the owner lands 26, so "most landed" is not a completeness test.
+- **`server.py`** adds `j1Land` to each list entry: jump 1's landing speed, or null if it didn't land before the run end.
+- **Alignment.** `alignGhost()` in `data.js` lines the ghost up with the open attempt:
+  - Per jump: jumps are matched by number. The ghost's jump-k air keeps its own spacing, shifted onto the open jump-k takeoff. Its ground after it is stretched or squeezed to end at the next matched takeoff. Rows that would run past it are left out, and the line breaks there.
+  - Rows before jump 1 take the jump-1 shift. Rows after the last matched jump keep the last shift. With no jump number in common it falls back to the timer start and the header says so.
+  - Jumps are matched by number, not by place on the map. A replay that skips jumps (top players skip 2 on bhop_ambience) pairs different blocks after the skip. Use "timer start" there.
+  - `viewer/check_ghost.js` checks every pair of saved attempts: matched takeoffs land exactly, and x never goes down. 2756 pairs passed, 3606 of 2.25 M ghost rows left out.
+- **Drawing.** The ghost is dashed pink (`#ff79c6`, not used elsewhere) and drawn behind the open attempt. Lane scales come from the open attempt only.
+  - Yaw speed: 5-tick average. Angle: `yawRatio` as a line. Gain: the gain line. Speed: the speed line.
+  - Jump strip: a pink bar where the ghost's air time sits, and "ghost N %" in the label when it fits.
+  - Keys: thin pink A and D strips, only for own ghosts. Replay keys run 3-7 ticks ahead of the angles, so they are not drawn, and the header says so.
+  - Hover: the ghost's row at the same x (within half a tick) shows where, speed, gain, yaw and ratio.
+- **Labels.** A pink header chip names the ghost: own run or `Replay: <player>`, the preset, the time and end, and the alignment with the matched jump count. A second chip says when the ghost's gain and angle were rebuilt from speed.
 - **Gain-loss ranking:** mistakes ranked by speed lost (for example "early reversal cost 23 u/s"), so the biggest one gets fixed first.
 
 ### Practice

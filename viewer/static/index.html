@@ -22,6 +22,13 @@
 	<div id="toolbar">
 		<button id="whole">Whole attempt</button>
 		<button id="jump1">Jump 1</button>
+		<label class="cmp" title="Draw another recording on this map and tickrate as a dashed pink ghost in the lanes">Compare
+			<select id="cmp-sel"><option value="none">None</option></select>
+		</label>
+		<select id="align" title="How the ghost is lined up: each jump's takeoff on the matching takeoff here, or both from the timer start">
+			<option value="jump">Align per jump</option>
+			<option value="timer">Align on timer start</option>
+		</select>
 		<button id="checks-btn" title="Turn checks on or off and set their thresholds">Check settings</button>
 		<span class="hint">Wheel: zoom · drag: pan · double-click: whole attempt · click a jump: zoom to it</span>
 		<section id="settings" hidden>
