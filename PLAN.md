@@ -131,7 +131,7 @@ Main view only, as chosen by the owner; the mistake checks come next.
   - Every air tick adds exactly 30 u/s square to the velocity: `sqrt((v + ideal)^2 - v^2)` = 30.00. So the optimal turn per tick is `atan(sqrt((v + ideal)^2 - v^2) / v)`. Measured yaw speed over this matches the game's `yawRatio` (median 0.78 vs 0.79, correlation 0.96 over 4 ticks).
   - Replays have no tick stats, so for them `gain` is the change in horizontal speed and `ideal` is `sqrt(v^2 + 30^2) - v` (both match own runs to 0.01). `ratio` is the averaged yaw speed over the optimal one. The page says so in the header.
   - Yaw going up is a left turn: in air, the held A or D matched the turn direction on about 99 % of ticks.
-  - In own runs, `+left` (bit 128) is held with W and A in the start zone and into jump 1.
+  - In own runs, `+left` (bit 128) is held with W and A in the start zone and into jump 1. The owner confirmed this is on purpose: they often hold `+left` while prestrafing. Those ticks turn at the fixed `cl_yawspeed`, so the checks must not judge them as mouse turning.
 - **What it draws.** Lanes share one x axis (ticks from the timer start, with seconds):
   - Jump strip with gain % (red at 60 %, green at 95 %). Jump 1 is the air segment in progress when the timer starts, else the next one; earlier hops are `pre`.
   - Yaw speed: per tick (thin), 5-tick average (thick), optimal line with an 85-115 % band.
