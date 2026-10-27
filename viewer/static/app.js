@@ -658,15 +658,6 @@ function quantile(d, i0, i1, val, q) {
 	return vs[Math.min(vs.length - 1, Math.floor(q * vs.length))];
 }
 
-function minOf(d, i0, i1, val) {
-	let m = Infinity;
-	for (let i = i0; i <= i1; i++) {
-		const v = val(i);
-		if (Number.isFinite(v) && v < m) m = v;
-	}
-	return m;
-}
-
 const air = (d) => (i) => !d.ground[i];
 // Scales come from strafing rows only: in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30)
 const strafingRows = (d) => (i) => !d.ground[i] && d.speed[i] > 100;
@@ -727,8 +718,9 @@ const LANE_DRAW = {
 
 	yaw(g, l, d, i0, i1) {
 		const ok = strafingRows(d);
-		const optMax = quantile(d, i0, i1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
-		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, i0, i1, (i) => Math.abs(d.yawd[i]), 0.98));
+		// scales come from the whole attempt, so panning or zooming never rescales a lane
+		const optMax = quantile(d, 0, d.n - 1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
+		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, 0, d.n - 1, (i) => Math.abs(d.yawd[i]), 0.98));
 		const Y = yMap(l, 0, hi);
 		// optimal band, 85-115 %
 		g.fillStyle = COL.band;
@@ -773,8 +765,9 @@ const LANE_DRAW = {
 	gain(g, l, d, i0, i1) {
 		const isAir = air(d);
 		const ok = strafingRows(d);
-		const hi = Math.max(0.1, quantile(d, i0, i1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
-		const lo = Math.max(-hi, Math.min(0, minOf(d, i0, i1, (i) => (ok(i) ? d.gain[i] : NaN))));
+		const hi = Math.max(0.1, quantile(d, 0, d.n - 1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
+		// 2nd percentile, not the minimum: over a whole run one wall hit would squash the lane
+		const lo = Math.max(-hi, Math.min(0, quantile(d, 0, d.n - 1, (i) => (ok(i) ? d.gain[i] : NaN), 0.02)));
 		const Y = yMap(l, lo, hi);
 		// lost gain, shaded between gain and ideal
 		g.fillStyle = COL.loss;
@@ -827,7 +820,7 @@ const LANE_DRAW = {
 	},
 
 	speed(g, l, d, i0, i1) {
-		const hi = Math.max(50, quantile(d, i0, i1, (i) => d.speed[i], 0.995) * 1.08);
+		const hi = Math.max(50, quantile(d, 0, d.n - 1, (i) => d.speed[i], 0.995) * 1.08);
 		const Y = yMap(l, 0, hi);
 		ghostLine(g, (i) => ghost.gd.speed[i], Y);
 		line(g, d, i0, i1, (i) => d.speed[i], Y, COL.line, 2);

@@ -541,10 +541,11 @@ function inView(r) {
 	return out;
 }
 
-// q-th fraction of a value over the in-view rows of every shown recording (scales cover all of them)
+// q-th fraction of a value over every row of every shown recording (scales cover all of them, and
+// stay put while panning or zooming)
 function quantAll(val, ok, q) {
 	const vs = [];
-	for (const r of shown) for (const i of inView(r)) if (ok(r.gd, i)) {
+	for (const r of shown) for (const i of r.order) if (ok(r.gd, i)) {
 		const v = val(r.gd, i);
 		if (Number.isFinite(v)) vs.push(v);
 	}
