@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compare · Strafe Review</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/drill.css">
+<link rel="stylesheet" href="/static/compare.css">
+</head>
+<body class="drill compare">
+<header id="bar">
+	<h1>Compare</h1>
+	<a class="btn back" href="/">← Back to all attempts</a>
+	<label>Map <select id="map"></select></label>
+	<label>Align <select id="align" title="How the others are lined up with the reference (the first pick)">
+		<option value="jump">Per jump</option>
+		<option value="timer">On timer start</option>
+	</select></label>
+	<span id="live" class="live off" title="The recording list updates by itself the moment an attempt is saved">Live</span>
+	<span class="hint">Pick 2 to 4 recordings. The first pick is the reference: the others are lined up with it.</span>
+</header>
+<main id="cmp-main">
+	<section id="picker">
+		<div class="sec-head"><h2>Recordings</h2><span id="pick-sum" class="muted"></span>
+			<label class="drill-toggle"><input type="checkbox" id="show-drills"><span>Show drills</span></label>
+			<button id="clear">Clear picks</button></div>
+		<div id="pick-list"></div>
+	</section>
+	<section id="stats">
+		<div class="sec-head"><h2>Stats</h2><span class="muted">best in each row is marked · hover a row name for how it is measured</span></div>
+		<div id="stats-body" class="muted">Pick at least 2 recordings.</div>
+	</section>
+	<section id="graph">
+		<div class="sec-head"><h2>Graph</h2>
+			<span class="muted">Wheel: zoom · drag: pan · double-click: whole run · click a jump: zoom to it</span>
+			<button id="whole">Whole run</button><button id="jump1">Jump 1</button></div>
+		<div id="legend"></div>
+		<div id="readout" class="readout"></div>
+		<div id="plot"><canvas id="base"></canvas><canvas id="over"></canvas></div>
+	</section>
+	<section id="perjump">
+		<div class="sec-head"><h2>Per jump</h2><span id="pj-note" class="muted"></span></div>
+		<div id="pj-body"></div>
+	</section>
+	<section id="mist">
+		<div class="sec-head"><h2>Mistakes</h2><span class="muted">checks from the main page, with its saved settings · count · u/s lost</span></div>
+		<div id="mist-body"></div>
+	</section>
+</main>
+<script src="/static/data.js"></script>
+<script src="/static/checks.js"></script>
+<script src="/static/stats.js"></script>
+<script src="/static/compare.js"></script>
+</body>
+</html>

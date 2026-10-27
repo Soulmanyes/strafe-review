@@ -87,6 +87,8 @@ function findJumps(d, preRows) {
 		let g = 0;
 		let id = 0;
 		for (let j = s; j < e; j++) {
+			// a replay row after missed ticks has no gain (rebuilt from speed), so it is left out of both sums
+			if (!Number.isFinite(d.gain[j]) || !Number.isFinite(d.ideal[j])) continue;
 			g += d.gain[j];
 			id += d.ideal[j];
 		}
@@ -173,4 +175,13 @@ function ghostNearest(gx, order, xv, maxDist) {
 	return Math.abs(gx[i] - xv) <= maxDist ? i : -1;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps, alignGhost, ghostNearest };
+// Last row of the run: before the post-end tail, and no later than runTime after the timer start. A replay
+// pauses at its end and keeps sending rows, which aren't run data.
+function runEnd(a, d) {
+	let last = a.postRows ? d.n - 1 - a.postRows : d.n - 1;
+	const span = a.runTime ? Math.round(a.runTime / a.interval) : Infinity;
+	while (last > 0 && d.x[last] > span + 1) last--;
+	return last;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest };

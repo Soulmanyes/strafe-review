@@ -1,0 +1,34 @@
+/* Compare page; colours and buttons come from style.css, the bar from drill.css */
+#cmp-main { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 40px; }
+#picker .sec-head button { margin-left: 0; }
+#graph .sec-head button + button { margin-left: 0; }
+#picker .sec-head .drill-toggle { margin-left: auto; display: flex; gap: 6px; align-items: center; color: var(--muted); }
+#pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; }
+.pick { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }
+.pick:hover { border-color: var(--accent); }
+.pick.on { border-width: 2px; padding: 5px 7px; }
+.pick.off { opacity: 0.5; cursor: default; }
+.pick .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid var(--border); }
+.pick .ref { font-size: 11px; color: var(--text); background: #ffffff18; border-radius: 4px; padding: 0 5px; }
+.pick .meta { color: var(--muted); }
+.pick button { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+
+table.cmp { border-collapse: collapse; font: 13px ui-monospace, monospace; }
+table.cmp th, table.cmp td { padding: 4px 18px 4px 0; border-bottom: 1px solid #ffffff10; text-align: left; vertical-align: top; }
+table.cmp thead th { font: 600 13px system-ui; border-bottom: 1px solid var(--border); }
+table.cmp tbody th { font: 500 13px system-ui; color: var(--muted); white-space: nowrap; }
+table.cmp tbody th[title] { cursor: help; text-decoration: underline dotted #ffffff40; }
+table.cmp tr.grp th { color: var(--text); font: 600 12px system-ui; padding-top: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+table.cmp td.best { color: #ffe066; font-weight: 700; }
+table.cmp td.best .star { font-size: 11px; }
+table.cmp .sub { color: var(--muted); font-size: 11px; display: block; }
+table.cmp .na { color: var(--muted); font-style: italic; }
+table.cmp td.miss { color: var(--muted); }
+.colhead { display: flex; flex-direction: column; gap: 3px; }
+.colhead .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+#legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-bottom: 6px; }
+#legend .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+#plot { position: relative; }
+#plot canvas { position: absolute; left: 0; top: 0; }
+.readout { min-height: 22px; font: 12px ui-monospace, monospace; margin-bottom: 6px; display: flex; flex-direction: column; gap: 2px; }
+.readout .k { color: var(--muted); }

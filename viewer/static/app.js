@@ -996,6 +996,11 @@ $('jump1').onclick = () => {
 $('refresh').onclick = loadList;
 $('align').value = localStorage.getItem(ALIGN_KEY) === 'timer' ? 'timer' : 'jump';
 $('cmp-sel').onchange = compareChanged;
+$('to-compare').onclick = () => {
+	if (!cur) return;
+	const ids = [cur.head.id, ...(ghost ? [ghost.head.id] : [])];
+	location.href = `/compare#${cur.head.dir}/${ids.join(',')}`;
+};
 $('align').onchange = compareChanged;
 $('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
 $('show-drills').onchange = () => {

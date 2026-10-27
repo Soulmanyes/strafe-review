@@ -6,6 +6,7 @@
 Routes:
   /                          the page (viewer/static/index.html)
   /drill                     the jump-1 drill page (viewer/static/drill.html)
+  /compare                   the compare page, 2-4 recordings side by side (viewer/static/compare.html)
   /static/<file>             page files
   /api/attempts              every saved attempt's header (no rows, plus rowCount, dir,
                              j1Takeoff, the jump-1 takeoff speed, j1Land, its landing speed
@@ -178,6 +179,8 @@ class Handler(BaseHTTPRequestHandler):
             parts = ["static", "index.html"]
         elif parts == ["drill"]:
             parts = ["static", "drill.html"]
+        elif parts == ["compare"]:
+            parts = ["static", "compare.html"]
         if len(parts) == 2 and parts[0] == "static" and STATIC_FILE.fullmatch(parts[1]):
             path = STATIC / parts[1]
             if path.is_file():

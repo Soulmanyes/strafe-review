@@ -284,6 +284,34 @@ The owner asked for a separate page that updates by itself the moment an attempt
     - Mistake-check counts and u/s lost.
   - Sync is measured the same way for every recording: held key vs turn direction. Each recording's keys are shifted by the lag that matches best, because replay keys run ahead of the angles.
 
+#### Compare page v1 (2026-10-27)
+
+- **Files.**
+  - `viewer/static/compare.html`, `compare.js` and `compare.css`, served at `/compare`.
+  - `stats.js` holds the summary stats with no DOM. `viewer/check_stats.js` prints them per attempt.
+  - Links: "Compare →" next to "Drill →", and a "Compare page" button in the main toolbar that opens the open attempt and its ghost.
+- **URL.** `/compare#<map>/<id>,<id>,...`, with the first id as the reference.
+- **Picker.**
+  - The list holds every recording on the map + tickrate picked at the top, with no replay fragments. Drills are behind a "Show drills" toggle.
+  - Click a recording to add or remove it, up to 4. "Make reference" moves a pick first.
+- **Colours.** Blue, pink, amber and violet in pick order. Green and red are left out, because they mean optimal and loss.
+- **Stats** (`summarize()`): definitions are shared with the rest of the viewer, so the same jump shows the same number everywhere.
+  - **Gain %:** sum(gain) / sum(ideal) over jumps 1+, as the jump strip.
+  - **Sync (keys vs turn):** A or D alone matching the turn side on strafing ticks, with `+left`/`+right` ticks out. Each recording's keys are shifted by the lag (-10..10 ticks) that matches best. Replays come out at 5-7, own runs at 1, measured the same way for all. Replay sync is marked approximate. This is not the game's own sync number.
+  - **Angle:** the drill page's median `yawRatio` rule.
+  - **Strafes per landed jump** and **% of strafing ticks turning**.
+  - **Run:** end, jumps landed and missed ticks. A replay that ended `replaced` reads "Replay stopped at X s", never as a finish.
+  - **Jump 1:** takeoff, landing and gain %.
+  - **Speed:** max, average and at the end. "At the end" is noted as at the finish or at the end of the recording.
+  - **Mistakes:** `runChecks()` with the main page's settings. For replays the key checks and weak takeoff are not run, and the table says "not run (replay)" rather than 0.
+  - Checked against the jump strip: mvr5wa45va jump 1 79.03 %, player A 90.57 %, mvr4ohct1z 81.42 %, mvr5qqnsk0 83.03 %.
+- **Per-jump table.** Gain %, sync and strafes per jump, matched by number, with the best in each row starred. A note shows when jump counts differ.
+- **Graph.** Lanes: a jump strip (one row per recording), speed, yaw speed (5-tick average, with the reference's optimal band), angle and gain (with the reference's ideal dashed).
+  - Scales cover every shown recording.
+  - Each recording is cut at its run end (`runEnd()` in data.js: before `postRows` and no later than `runTime`). A replay paused at its end keeps sending rows.
+  - Hover shows every recording's values at that x, with each one's own tick.
+- **Fixed in passing.** `findJumps()` now skips rows with no gain, such as a replay row after missed ticks. Before, one such row turned the whole jump's gain % into NaN ("?" on the strip).
+
 #### Ghost overlay v1 (2026-10-27)
 
 - **Picker.** "Compare" sits in the main toolbar. It offers None, three presets and "Pick one".
