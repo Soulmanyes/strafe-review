@@ -765,14 +765,16 @@ $('jump1').onclick = () => {
 	if (cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 };
 $('refresh').onclick = loadList;
+// Check settings open as a panel under the toolbar, over the graph
 $('checks-btn').onclick = () => {
 	const sec = $('settings');
 	sec.hidden = !sec.hidden;
-	if (!sec.hidden) {
-		showSettings();
-		sec.scrollIntoView({ block: 'nearest' });
-	}
+	if (!sec.hidden) showSettings();
 };
+$('close-checks').onclick = () => ($('settings').hidden = true);
+window.addEventListener('keydown', (e) => {
+	if (e.key === 'Escape') $('settings').hidden = true;
+});
 $('reset-checks').onclick = () => {
 	localStorage.removeItem(SETTINGS_KEY);
 	showSettings();
