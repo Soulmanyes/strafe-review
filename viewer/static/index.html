@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Strafe Review</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<aside id="side">
+	<div class="side-head">
+		<h1>Strafe Review</h1>
+		<button id="refresh" title="Load the attempt list again">Refresh</button>
+	</div>
+	<div id="list"></div>
+</aside>
+<main id="main">
+	<header id="head"><span class="muted">Pick an attempt on the left.</span></header>
+	<div id="toolbar">
+		<button id="whole">Whole attempt</button>
+		<button id="jump1">Jump 1</button>
+		<span class="hint">Wheel: zoom · drag: pan · double-click: whole attempt · click a jump: zoom to it</span>
+	</div>
+	<div id="readout"></div>
+	<div id="plot">
+		<canvas id="base"></canvas>
+		<canvas id="over"></canvas>
+	</div>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

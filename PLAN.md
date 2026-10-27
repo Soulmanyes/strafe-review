@@ -1,6 +1,6 @@
 # Strafe Review: plan
 
-Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Next: the viewer.
+Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Viewer v1 (main view) written (`viewer/`, see "Viewer v1" below). Next: the mistake checks.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Scope: Momentum Mod only for now. CS:S has no Panorama HUD, so a CS:S version wo
    - Panorama output ends up in the console log (`con_logfile`, already used by Source Yaw as `yaw.log`).
    - Chunked output avoids printing to the console every tick, which could stutter.
 2. **Collector.** Tails `yaw.log`, puts the chunks back together, and saves each attempt to disk as a compressed file. It lives in this private repo for now and moves into Source Yaw when the feature goes public.
-3. **Viewer (local web page).** Served on localhost by Source Yaw. It reads the saved attempts and shows the graphs.
+3. **Viewer (local web page).** Served on localhost by `viewer/server.py` in this private repo (like the collector, it moves into Source Yaw only when the feature goes public). It reads the saved attempts and shows the graphs.
 
 A HUD that only reads and displays data is normal in Momentum; HUD customisation is common there. The recorder never sends inputs.
 
@@ -94,7 +94,7 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Chunks go out at most 200 per frame, so a long run never hitches.
   - A map change in the middle of an attempt dumps what was recorded (`level`).
 - **Open until the first recorder play test:**
-  - Does `GetLastTickStats()` follow the spec target? (The replay's gain lane will show it.)
+  - Does `GetLastTickStats()` follow the spec target? No: `gain`, `ideal` and `ratio` read 0 on every row of a replay (checked 2026-10-27). The viewer rebuilds them from speed (see "Viewer v1").
   - What does a stage teleport do mid-run?
   - Self-checks in `check_recorder.py`: on a finish, run rows + gaps must match `round(runTime / interval)` within 1; during a replay, `tick - rtick` must stay constant.
 - **Recorder v1 play test (2026-10-27, bhop_ambience, 100 tick).** 6 attempts, none broken.
@@ -116,6 +116,33 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Keep the file format stable, because the progress view reads old attempts.
 
 ## Viewer
+
+### Viewer v1 (2026-10-27)
+
+Main view only, as chosen by the owner; the mistake checks come next.
+
+- **Files.** `viewer/server.py` (stdlib, `127.0.0.1:8765`, `--port`, `--store`) and `viewer/static/` (plain HTML, CSS and canvas JS; no build step, no CDN).
+  - `/api/attempts` lists every attempt's header without rows, newest first, cached by file mtime and size.
+  - `/api/attempt/<map>/<id>` sends the `.json.gz` file as it is, with `Content-Encoding: gzip`. The map and id are checked against strict patterns, so no path leaves the store.
+- **Rows are read by the names in `cols`**, so files with added columns still load. Rows are placed by `tick`, and lines break at missed ticks.
+- **Findings from the saved attempts (2026-10-27):**
+  - The `move` column (`moveStatus`) reads 0 on every row of all 15 attempts, ground included. Ground is taken from `vz == 0` instead (a 0 between rising and falling is an apex, not ground). A takeoff is `vz` going from 0 or less to over 100, also across a gap. A later recorder fix should add a new column at the end, not reuse `move`.
+  - A `jump` event comes on the tick before its takeoff. Its `gain`, `sync` and `ratio` describe the air time that just ended, not the jump starting. `sum(gain) / sum(ideal)` over an air segment's rows gives the same gain % (jump 1 of the finished test run: 71.0 % both ways), so the viewer uses the rows.
+  - Every air tick adds exactly 30 u/s square to the velocity: `sqrt((v + ideal)^2 - v^2)` = 30.00. So the optimal turn per tick is `atan(sqrt((v + ideal)^2 - v^2) / v)`. Measured yaw speed over this matches the game's `yawRatio` (median 0.78 vs 0.79, correlation 0.96 over 4 ticks).
+  - Replays have no tick stats, so for them `gain` is the change in horizontal speed and `ideal` is `sqrt(v^2 + 30^2) - v` (both match own runs to 0.01). `ratio` is the averaged yaw speed over the optimal one. The page says so in the header.
+  - Yaw going up is a left turn: in air, the held A or D matched the turn direction on about 99 % of ticks.
+  - In own runs, `+left` (bit 128) is held with W and A in the start zone and into jump 1.
+- **What it draws.** Lanes share one x axis (ticks from the timer start, with seconds):
+  - Jump strip with gain % (red at 60 %, green at 95 %). Jump 1 is the air segment in progress when the timer starts, else the next one; earlier hops are `pre`.
+  - Yaw speed: per tick (thin), 5-tick average (thick), optimal line with an 85-115 % band.
+  - Angle: `yawRatio` around 1, too wide in orange and too narrow in blue.
+  - Gain vs ideal, with lost gain shaded red.
+  - Keys: W, A, D, the ideal key (turn direction), a red "Wrong" row (turning without the matching key held) and `+left`/`+right`.
+  - Speed, with ground ticks shaded in every lane and takeoff marks.
+  - Missed ticks.
+- **Scales** use the 98th percentile of rows in the air at 100+ u/s, so a fall at near-zero speed (ideal gain near 30) or a teleport tick doesn't squash a lane.
+- **Controls.** Wheel to zoom at the pointer, drag to pan, double-click for the whole attempt, click a jump to zoom to it, and a "Jump 1" button. Hover shows exact values in a bar above the graph. The URL hash keeps the open attempt.
+- **Label** (`Own run` / `Replay: <player>`) is shown in the list and in the header.
 
 ### Main view
 
