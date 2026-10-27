@@ -16,8 +16,8 @@ Scope: Momentum Mod only for now. CS:S has no Panorama HUD, so a CS:S version wo
    - It buffers every tick of the attempt. When the attempt ends, it writes the run out in compact chunks with `$.Msg`.
    - Panorama output ends up in the console log (`con_logfile`, already used by Source Yaw as `yaw.log`).
    - Chunked output avoids printing to the console every tick, which could stutter.
-2. **Collector.** Tails `yaw.log`, puts the chunks back together, and saves each attempt to disk as a compressed file. It lives in this private repo for now and moves into Source Yaw when the feature goes public.
-3. **Viewer (local web page).** Served on localhost by `viewer/server.py` in this private repo (like the collector, it moves into Source Yaw only when the feature goes public). It reads the saved attempts and shows the graphs.
+2. **Collector.** Tails `yaw.log`, puts the chunks back together, and saves each attempt to disk as a compressed file. It lives in this private repo. Source Yaw doesn't have to be involved; for now it leans on Source Yaw only because that is the simplest way to make it work (Source Yaw's `yaws.cfg` turns on `con_logfile`, and the launch option chains `sourceyaw-run`). Moving into Source Yaw later is an option, not a plan (owner, 2026-10-27).
+3. **Viewer (local web page).** Served on localhost by `viewer/server.py` in this private repo (like the collector, it stays separate from Source Yaw). It reads the saved attempts and shows the graphs.
 
 A HUD that only reads and displays data is normal in Momentum; HUD customisation is common there. The recorder never sends inputs.
 
