@@ -1,6 +1,6 @@
 # Strafe Review: plan
 
-Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Viewer v1 (main view) written (`viewer/`, see "Viewer v1" below). Mistake checks v1 written (see "Mistake checks v1" below), not yet tried by the owner on new runs.
+Status: probe done (`recorder/probe/`, results below). Recorder v1 written and play-tested (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`). Collector v1 written (`collector/`, see "Collector v1" below). Viewer v1 (main view) written (`viewer/`, see "Viewer v1" below). Mistake checks v1 written (see "Mistake checks v1" below), not yet tried by the owner on new runs. Jump-1 drill page written (see "Jump-1 drill v1" below).
 
 ## Goal
 
@@ -211,6 +211,28 @@ Each check can be switched on or off in the viewer settings. Thresholds start as
 - **No key while turning:** dead ticks.
 - **Early/late switch:** the key switch offset in ticks from the turn reversal. The target is -1, as in the Source Yaw trainer.
 - **W held in air:** optional and off by default, because many players use jump binds that release W.
+
+### Jump-1 drill v1 (2026-10-27)
+
+The owner asked for a separate page that updates by itself the moment an attempt ends.
+
+- **Files.** `viewer/static/drill.html`, `drill.js`, `drill.css`, served at `/drill`. A link sits at the top of the main page's list, and an "All attempts" button sits on the drill page.
+- **Live update.** `/api/events` is a server-sent event stream. The server scans the store every 0.5 s and sends `attempt` with `{dir, id}` for each new file. A `: ping` comment goes out every 15 s. The collector writes `.<id>.tmp` and renames it, so a half-written file never matches. The drill page fetches only the new attempt and redraws. The main page reloads its list on the same event, and the open attempt stays open.
+- **Which attempts.** The map picker lists map + tickrate, newest first. It follows the newest attempt's map until the owner picks one by hand. "Latest session" means own attempts with under 30 min between consecutive starts, counted back from the newest. "All on this map" is the alternative.
+- **Jump 1** comes from `findJumps()` as on the main page. Rows are put on ticks from takeoff. It is **cut short** when the run ended (`endIdx`) before the landing. Cut-short attempts are shown but not counted. Replays never count: a replay whose jump 1 landed is drawn as a dashed, labelled reference line and listed under the stats.
+- **Stats** (over landed own jump 1s):
+  - Best = highest landing speed, because that is what jump 1 hands to the run.
+  - Median landing and median takeoff.
+  - Consistency = landing IQR, shown as ± half of it.
+  - Median gain % with its IQR.
+  - Last 5: the median landing of the last 5 minus the median of all shown, when 8+ are shown.
+  - Most common jump-1 mistakes: checks from `runChecks()` with `jump === 1`, using the main page's saved check settings. Each one shows how many attempts it fired in and the mean u/s lost.
+- **Charts.**
+  - Landing speed per attempt: dots, oldest left, coloured by gain %, with the median dashed. Cut-short attempts are hollow marks on the floor.
+  - Stacked lanes, aligned on takeoff: speed, turn speed (5-tick average, signed) and lost so far (running sum of ideal - gain over rows at 100+ u/s with no collision). All attempts are faint; best is green, latest blue, the tick-by-tick median white dashed and replays orange dashed.
+  - Side-by-side cards, newest first: speed and turn speed minis on a shared scale, takeoff to landing, gain %, ticks and the biggest jump-1 mistake. A card that arrived live flashes once.
+  - Hovering a card, dot or line picks that attempt out everywhere. Clicking opens `/#<map>/<id>/j1`, which the main page opens zoomed to jump 1.
+- **Known limit.** Attempts already loaded keep the weak-takeoff verdict from load time while new attempts come in. Reload the page to redo it.
 
 ### Comparison
 

@@ -5,10 +5,12 @@
 
 Routes:
   /                          the page (viewer/static/index.html)
+  /drill                     the jump-1 drill page (viewer/static/drill.html)
   /static/<file>             page files
   /api/attempts              every saved attempt's header (no rows, plus rowCount, dir and
                              j1Takeoff, the jump-1 takeoff speed), newest first
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
+  /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
 """
 import argparse
 import gzip
@@ -17,6 +19,7 @@ import math
 import os
 import re
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +31,8 @@ ID = re.compile(r"[a-z0-9]{1,40}")
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
+POLL = 0.5  # seconds between store scans for /api/events
+PING = 15  # seconds between keep-alive comments
 
 
 def jump1_takeoff(data):
@@ -88,6 +93,11 @@ def attempts(store):
     return out
 
 
+def snapshot(store):
+    """Every saved attempt file. The collector writes .<id>.tmp and renames it, so the glob only sees whole files."""
+    return set(store.glob("*/*.json.gz"))
+
+
 class Handler(BaseHTTPRequestHandler):
     store = None
 
@@ -104,15 +114,45 @@ class Handler(BaseHTTPRequestHandler):
     def fail(self, code, text):
         self.send(code, text.encode(), "text/plain; charset=utf-8")
 
+    def events(self):
+        """Push an "attempt" event for each new file in the store, until the page goes away."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        seen = snapshot(self.store)
+        last = time.monotonic()
+        try:
+            self.wfile.write(b": connected\n\n")
+            self.wfile.flush()
+            while True:
+                time.sleep(POLL)
+                now = snapshot(self.store)
+                for path in sorted(now - seen, key=lambda p: p.stat().st_mtime_ns if p.exists() else 0):
+                    msg = json.dumps({"dir": path.parent.name, "id": path.name.removesuffix(".json.gz")})
+                    self.wfile.write(f"event: attempt\ndata: {msg}\n\n".encode())
+                    last = time.monotonic()
+                seen = now
+                if time.monotonic() - last > PING:
+                    self.wfile.write(b": ping\n\n")
+                    last = time.monotonic()
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_GET(self):
         parts = self.path.split("?", 1)[0].strip("/").split("/")
         if parts == [""]:
             parts = ["static", "index.html"]
+        elif parts == ["drill"]:
+            parts = ["static", "drill.html"]
         if len(parts) == 2 and parts[0] == "static" and STATIC_FILE.fullmatch(parts[1]):
             path = STATIC / parts[1]
             if path.is_file():
                 ctype = TYPES[path.suffix] + "; charset=utf-8"
                 return self.send(200, path.read_bytes(), ctype)
+        elif parts == ["api", "events"]:
+            return self.events()
         elif parts == ["api", "attempts"]:
             body = json.dumps(attempts(self.store)).encode()
             return self.send(200, body, "application/json")

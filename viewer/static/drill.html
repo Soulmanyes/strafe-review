@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jump-1 drill · Strafe Review</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/drill.css">
+</head>
+<body class="drill">
+<header id="bar">
+	<h1>Jump-1 drill</h1>
+	<a class="btn" href="/">All attempts</a>
+	<label>Map <select id="map"></select></label>
+	<label>Show <select id="scope">
+		<option value="session">Latest session</option>
+		<option value="all">All on this map</option>
+	</select></label>
+	<span id="live" class="live off" title="The page updates by itself the moment an attempt is saved">Live</span>
+	<span class="hint">A session is own attempts with under 30 min between them. Replays are never counted in the stats.</span>
+</header>
+<main id="drill-main">
+	<section id="stats"></section>
+	<section>
+		<div class="sec-head"><h2>Landing speed per attempt</h2><span class="muted">oldest left · dot colour = gain % (red 60, green 95) · click a dot to open it</span></div>
+		<div class="chart" id="trend-box"><canvas id="trend"></canvas></div>
+	</section>
+	<section>
+		<div class="sec-head">
+			<h2>Stacked</h2>
+			<span class="muted">ticks from takeoff · <span class="sw best"></span>best <span class="sw last"></span>latest <span class="sw med"></span>median <span class="sw rep"></span>replay · hover a line or card to pick it out, click to open</span>
+		</div>
+		<div id="stack-read" class="readout"></div>
+		<div class="chart" id="stack-box"><canvas id="stack"></canvas></div>
+	</section>
+	<section>
+		<div class="sec-head"><h2>Side by side</h2><span class="muted">newest first · click to open jump 1 in the main view</span></div>
+		<div id="cards"></div>
+	</section>
+</main>
+<script src="/static/data.js"></script>
+<script src="/static/checks.js"></script>
+<script src="/static/drill.js"></script>
+</body>
+</html>

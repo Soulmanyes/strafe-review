@@ -781,8 +781,14 @@ $('reset-checks').onclick = () => {
 };
 new ResizeObserver(() => draw()).observe($('plot'));
 
-loadList().then(() => {
-	const [dir, id] = location.hash.slice(1).split('/');
-	if (dir && id) open(dir, id);
-	else if (list.length) open(list[0].dir, list[0].id);
+// A new attempt saved by the collector shows up in the list at once (the open one stays open)
+new EventSource('/api/events').addEventListener('attempt', loadList);
+
+loadList().then(async () => {
+	// #<map>/<id>/j1 (from the drill page) opens the attempt zoomed to jump 1
+	const [dir, id, what] = location.hash.slice(1).split('/');
+	if (dir && id) {
+		await open(dir, id);
+		if (what === 'j1' && cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
+	} else if (list.length) open(list[0].dir, list[0].id);
 });
