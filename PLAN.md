@@ -355,6 +355,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **When.** The recorder scans new rows for a landing (vz from below 0 to exactly 0, or a takeoff, since a missed landing tick goes straight from falling to the next jump) and works the line out 3 rows later, since the 5-tick turn average reads 2 rows ahead. If jump 1 hasn't landed yet (the landing was an earlier hop), it waits for the next landing. Own attempts only: tick stats read 0 while spectating a replay.
 - **Logged** as `[panorama] SRLINE <id> <json>` in yaw.log (start, landing row, land, gain %, strafes, all jump-1 mistakes). The collector only reads `SRREC` lines.
 - **Parity check:** `node viewer/check_line.js` feeds every saved own attempt row by row through the recorder code (types stripped by node, Panorama stubbed) and diffs it with the viewer's numbers: 44 of 44 identical on 2026-10-27, line shown at landing + 3 rows on all. `--log [yaw.log]` compares the lines the game really logged with the saved attempts.
+- **Live test (2026-10-27):** after `panorama_reload` and a jump-1 drill session, `check_line.js --log` compared 76 lines the game logged with the saved attempts: 0 differ (1 attempt skipped, no landed jump 1).
 - The port must follow changes to `data.js`, `checks.js` defaults or the drill's per-strafe gain %. `check_line.js` catches drift.
 
 ### Detail
