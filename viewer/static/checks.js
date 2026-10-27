@@ -267,7 +267,7 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 			const worse = pl < pr ? L : R;
 			const lost = worse.id * (Math.abs(pl - pr) / 100);
 			const runStart = jumps.find((j) => j.num === 1);
-			add('balance', null, runStart ? runStart.s : 0, endIdx, `Left strafes ${pl.toFixed(0)} %, right strafes ${pr.toFixed(0)} % of ideal gain (${L.n} left, ${R.n} right)`, lost);
+			add('balance', null, runStart ? runStart.s : 0, endIdx, `Left strafes ${pl.toFixed(2)} %, right strafes ${pr.toFixed(2)} % of ideal gain (${L.n} left, ${R.n} right)`, lost);
 		}
 	}
 

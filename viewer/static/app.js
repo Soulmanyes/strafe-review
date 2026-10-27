@@ -532,7 +532,7 @@ const LANE_DRAW = {
 			g.fillRect(X0 + 1, l.y + 4, X1 - X0 - 2, l.h - 8);
 			g.strokeStyle = j.num ? `hsl(${hue} 65% 62%)` : COL.border;
 			g.strokeRect(X0 + 1.5, l.y + 4.5, X1 - X0 - 3, l.h - 9);
-			const label = `${j.num ? j.num : 'pre'} · ${Number.isFinite(j.pct) ? j.pct.toFixed(0) : '?'}%`;
+			const label = `${j.num ? j.num : 'pre'} · ${Number.isFinite(j.pct) ? j.pct.toFixed(2) : '?'}%`;
 			if (g.measureText(label).width < X1 - X0 - 8) {
 				g.fillStyle = COL.text;
 				g.fillText(label, X0 + 6, l.y + l.h / 2 + 4);

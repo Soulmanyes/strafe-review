@@ -285,10 +285,10 @@ function showStats() {
 	grid.className = 'stat-grid';
 	grid.append(
 		stat('Attempts', `${done.length}`, cut ? `+${cut} cut short (not counted)` : 'all landed'),
-		stat('Best landing', `${b.land.toFixed(1)} u/s`, `gain ${b.pct.toFixed(0)} % · ${when(b.h.started)} · open`, () => openMain(b)),
+		stat('Best landing', `${b.land.toFixed(1)} u/s`, `gain ${b.pct.toFixed(2)} % · ${when(b.h.started)} · open`, () => openMain(b)),
 		stat('Median landing', `${median(lands).toFixed(1)} u/s`, `takeoff median ${median(done.map((e) => e.takeoff)).toFixed(1)} u/s`),
 		stat('Consistency', `±${(iqr(lands) / 2).toFixed(1)} u/s`, `landing IQR ${iqr(lands).toFixed(1)} u/s (middle half of attempts)`),
-		stat('Median gain', `${median(pcts).toFixed(1)} %`, `IQR ${iqr(pcts).toFixed(1)} % points`)
+		stat('Median gain', `${median(pcts).toFixed(2)} %`, `IQR ${iqr(pcts).toFixed(2)} % points`)
 	);
 	if (done.length >= 8) {
 		const recent = done.slice(-5).map((e) => e.land);
@@ -324,7 +324,7 @@ function showStats() {
 	for (const r of shown.replays) {
 		const n = document.createElement('div');
 		n.className = 'muted';
-		n.textContent = `Reference: Replay: ${r.h.player || 'unknown player'}, landing ${r.land.toFixed(1)} u/s, gain ${r.pct.toFixed(0)} % (not counted)`;
+		n.textContent = `Reference: Replay: ${r.h.player || 'unknown player'}, landing ${r.land.toFixed(1)} u/s, gain ${r.pct.toFixed(2)} % (not counted)`;
 		box.append(n);
 	}
 }
@@ -638,7 +638,7 @@ function showCards() {
 		const nums = document.createElement('div');
 		nums.className = 'nums';
 		nums.textContent = e.complete
-			? `${e.takeoff.toFixed(0)} → ${e.land.toFixed(0)} u/s (${e.land >= e.takeoff ? '+' : ''}${(e.land - e.takeoff).toFixed(0)}) · gain ${e.pct.toFixed(0)} % · ${e.ticks} ticks`
+			? `${e.takeoff.toFixed(0)} → ${e.land.toFixed(0)} u/s (${e.land >= e.takeoff ? '+' : ''}${(e.land - e.takeoff).toFixed(0)}) · gain ${e.pct.toFixed(2)} % · ${e.ticks} ticks`
 			: `takeoff ${e.takeoff.toFixed(0)} u/s · run ended ${e.ticks} ticks in`;
 		const m = document.createElement('div');
 		m.className = 'worst';
@@ -742,7 +742,7 @@ function showFocus() {
 	const head = el('div', 'v-head');
 	head.append(el('b', '', `${when(f.h.started)}`));
 	if (f.complete) {
-		head.append(` · ${f.takeoff.toFixed(0)} → ${f.land.toFixed(0)} u/s · gain ${f.pct.toFixed(0)} %`);
+		head.append(` · ${f.takeoff.toFixed(0)} → ${f.land.toFixed(0)} u/s · gain ${f.pct.toFixed(2)} %`);
 		if (Number.isFinite(medLand)) {
 			const dm = f.land - medLand;
 			head.append(el('span', dm >= 0 ? 'good' : 'bad', ` · ${dm >= 0 ? '+' : ''}${dm.toFixed(1)} vs your median`));
@@ -816,7 +816,7 @@ function showFocus() {
 			tr.append(
 				el('td', '', `${s.num} ${SIDE_NAME[s.dir]}${s.btn ? ' (+left/right)' : ''}`),
 				cell(`${s.n}`, fmt(u.n), 0, lostWorse && Number.isFinite(u.n) && s.n < u.n - 8),
-				cell(fmt(s.pct), fmt(u.pct), 0, lostWorse && Number.isFinite(u.pct) && s.pct < u.pct - 10),
+				cell(fmt(s.pct, 2), fmt(u.pct, 2), 2, lostWorse && Number.isFinite(u.pct) && s.pct < u.pct - 10),
 				cell(fmt(s.lost, 1), fmt(u.lost, 1), 1, lostWorse),
 				cell(fmt(s.ratio, 2), fmt(u.ratio, 2), 2, lostWorse && Number.isFinite(u.ratio) && Math.abs(s.ratio - u.ratio) > 0.12),
 				cell(`${fmt(s.keys)} %`, fmt(u.keys), 0, lostWorse && Number.isFinite(u.keys) && s.keys < u.keys - 10),
