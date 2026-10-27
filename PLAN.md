@@ -163,6 +163,17 @@ Main view only, as chosen by the owner; the mistake checks come next.
 
 ### Mistake checks
 
+**Next step (chosen 2026-10-27): all 11 checks in one batch**, plus the mistake list under the graph: click a row to zoom to its ticks, rank by speed lost (u/s = sum of ideal - gain over the ticks involved), checks on/off and thresholds in a settings panel (saved in the browser). Only jumps 1+ and rows up to the run end are checked. `+left`/`+right` ticks are never judged as mouse turning.
+
+Measured on the 14 own attempts (bhop_ambience, 100 tick), to set the first defaults:
+- Strafe length (a strafe = a run of one turn direction inside a jump): first strafe after takeoff median 29 ticks (5-95 %: 3-74), middle strafes median 32 (23-51).
+- Key switch offset from the turn reversal (ticks, target -1): -1: 32, -2: 23, 0: 35, 1: 15, 2: 5, 3: 7, 4: 3, -3: 3, -4: 4; a few at -8 to -5 and 7. 132 switches in total.
+- Delay from takeoff to the first correct key while turning: 0 ticks almost always (95 % at 2).
+- `yawRatio` at 100+ u/s in the air: median 0.66 (25-75 %: 0.39-0.83, 95 %: 1.16). Switch ticks pull it down, so wide/narrow should skip a few ticks at each strafe's ends.
+- Jump-1 takeoff speed: median 282 u/s (5-95 %: 253-286).
+- Weak takeoff needs other attempts on the map: plan is for the server to add each attempt's jump-1 takeoff speed to its list header, so the page can compare against the median of own attempts.
+
+
 Each check can be switched on or off in the viewer settings. Thresholds start as defaults and get tuned once real runs are recorded.
 
 - **Early reversal:** the first strafe after takeoff is too short, so you switched the other way too soon after the prestrafe.
