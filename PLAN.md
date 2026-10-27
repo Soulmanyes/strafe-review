@@ -1,6 +1,6 @@
 # Strafe Review: plan
 
-Status: planning only. Nothing is built yet.
+Status: probe done (`recorder/probe/`, results below). Recorder v1 written (`recorder/panorama/scripts/hud/strafe-review.ts`, checked by `recorder/check_recorder.py`); waiting for its first play test. Next after that: the Source Yaw collector.
 
 ## Goal
 
@@ -26,6 +26,22 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
 - **Custom files load first.** `gameinfo.txt` mounts `momentum/custom/*` first as `game+mod`, so files there override the game's own.
 - **Scripts compile at runtime.** `panorama.so` contains the TypeScript transpiler, so `.ts` HUD scripts are compiled when the game loads them.
 - **Where HUD panels are defined.** HUD children are listed in `panorama/layout/hud/hud.xml` and registered in `panorama/scripts/util/panel-registration.ts`. The lightest hook is probably overriding one small existing HUD script, not the whole of `hud.xml`, which would hide future upstream changes to that file.
+- **Probe v1 results (2026-10-27).**
+  - A script in `custom/` loads, and `$.Msg` lines reach `yaw.log` as `[panorama] <text>`.
+  - Each `$.Msg` is cut at 2047 characters and loses its newline, so the next message gets glued onto it. Keep chunks well under that (1000 is used).
+  - Dumping 1.17 MB (a 3-minute 100-tick run) as 1170 lines took 20 ms, with no stutter felt on an instant reset.
+  - `HudProcessInput` registered on the timer's own panel never fired for the probe (timer.ts already handles it there).
+- **Probe v2 results (2026-10-27).**
+  - `HudProcessInput` and `HudThink` on a child panel never fired either. Only a `$.Schedule(0, …)` loop runs every frame (about 254 calls a second here).
+  - `GetTickInterval()` reads 1/64 in the main menu and changes on map load (bhop_glacial: 100 tick). Read it at attempt start.
+  - `GetCurrentTime()` is interpolated per frame, not tick-aligned. Rounding it to ticks gives false gaps (6–20 per 5 s at 254 fps). v3 compares this against the timer's `runTimeTickstamp`.
+  - On reset the timer goes 1 (PRIMED) to 2 (RUNNING) and back to 1. `jumpCount` counts the jump in the start zone, so the first jump after leaving the zone can show as jump 2.
+- **Probe v3–v5 results (2026-10-27).**
+  - `panorama_reload` in the console reloads the probe without a game restart, while on a map.
+  - The timer status object has no tick counter at runtime: `runTimeTickstamp` is `undefined` (keys: `trackId, state, runTime, majorNum, minorNum, style, segmentsCount, segmentCheckpointsCount`). Rounding `runTime` to ticks gives 50–200 false gaps per 5 s.
+  - A change in `GetLastTickStats()` or the velocity counts 492–500 ticks per 5 s at 100 tick while moving, so it marks ticks reliably.
+  - On the frame a new tick shows up, game time sits 0–0.4 of a tick past a whole tick in about 90% of cases, at about 254 fps. So the tick boundary is at the whole tick, and `floor` numbers ticks correctly.
+- **Chosen hook (2026-10-27).** The recorder shadows `panorama/layout/hud/timer.xml` (16 lines) with a copy that adds one more `<include type="module">`. The timer is always shown, while jump-stats is bhop-only in the HUD customizer. `recorder/install.sh` warns when the game's own `timer.xml` has changed since the copy.
 - **Per-tick data:**
   - `MomentumMovementAPI.GetLastTickStats()` gives `strafeRight`, `speedGain`, `idealGain` and `yawRatio`.
   - `MomentumPlayerAPI.GetVelocity()` and `GetAngles()` give velocity and view angles.
@@ -51,9 +67,34 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
 
 - **Attempt boundaries.** An attempt starts when the timer starts (leaving the start zone). It ends on finish, reset, teleport back to the start, or a fail.
 - **Prestrafe.** Each attempt also keeps the last 2 seconds before the timer starts, so the prestrafe and takeoff are visible.
-- **Frames vs ticks.** HUD scripts run once per frame, not once per tick:
-  - Ticks are deduplicated by game time.
+- **Frames vs ticks.** HUD scripts run once per frame, not once per tick. Settled by probes v2–v5:
+  - The recorder runs from a `$.Schedule(0, …)` loop. `HudProcessInput` and `HudThink` never reach it.
+  - A new tick is seen when `GetLastTickStats()` or the velocity changes, or when `floor(GetCurrentTime() / interval)` moves on while standing still.
+  - The tick number is `floor(GetCurrentTime() / interval)`, raised to last + 1 if a change shows up inside the same number. Do not use `Math.round`: game time is interpolated, and rounding gives false gaps.
   - Ticks missed because fps dropped below the tickrate are stored as gaps, never filled in.
+- **Recorder v1 (2026-10-27).**
+  - A 2-second ring buffer runs all the time (`ceil(2 / interval)` rows, re-sized on `LevelInitPostEntity`). When the timer starts, the attempt copies the ring and keeps appending; `preRows` marks where the run starts.
+  - Jump 1 takes off inside the start zone, before the timer starts. The recorder does not define jumps: `move` (air/walk) in every row and raw `OnJumpStarted` + `GetLastJumpStats()` events are stored, and the viewer finds jump 1 as the air segment around the start.
+  - End reasons: `finish` (RUNNING to FINISHED), `reset` (to PRIMED), `stop` (to DISABLED), `target` (`ObserverTargetChanged`), `replaced` (`OnObservedTimerReplaced`), `level` (map change), `restart` (a start while one was still open).
+  - Labels: `replay` when `GetReplayState()` is not NONE or `GetObservedRunMetadata()` is set (with player name and replay file), else `own`. `practice` is stored too.
+- **Wire format 1.** Every line is `[panorama] SRREC <id> ...`:
+  - `<id> <i>/<n> <text>`: chunk i of n, at most 900 characters. The chunks joined in order are one JSON object.
+  - `<id> end n=<n> chars=<c>`: last line; an attempt with missing chunks is dropped.
+  - JSON fields: `format, id, started, map, interval, style, track, label, player, replayFile, practice, version, cols, preRows, rows, events, reason, runTime, gaps, ended`.
+  - `rows` is rows joined by `;`, each row the comma-separated values named in `cols`: `tick, gain, ideal, ratio, right, vx, vy, vz, yaw, pitch, buttons, move, duck, rtick`. New columns are added at the end and named in `cols`, so old files still read.
+  - `id` is `Date.now()` in base 36 plus 2 random characters, so it never repeats across `panorama_reload`.
+  - Chunks go out at most 200 per frame, so a long run never hitches.
+  - A map change in the middle of an attempt dumps what was recorded (`level`).
+- **Open until the first recorder play test:**
+  - Does `GetLastTickStats()` follow the spec target? (The replay's gain lane will show it.)
+  - What does a stage teleport do mid-run?
+  - Self-checks in `check_recorder.py`: on a finish, run rows + gaps must match `round(runTime / interval)` within 1; during a replay, `tick - rtick` must stay constant.
+- **Recorder v1 play test (2026-10-27, bhop_ambience, 100 tick).** 6 attempts, none broken.
+  - Finish: run rows + gaps = 2086, `round(runTime / interval)` = 2086. Tick numbering is exact. 10 gaps in 20.9 s.
+  - Replay (player E): `tick - rtick` stayed constant in 1269 of 1270 rows. The replay ended as `replaced` when it was stopped.
+  - Keys while spectating a replay look like the replay's keys (A/D alternate, 0 rows with no key), not the local player's.
+  - Practice mode and bhopping back into the start zone both end the timer as DISABLED (`stop`), not PRIMED. A reset gave PRIMED; one other attempt ended as DISABLED after 11.6 s from an unknown cause.
+  - Non-finish ends read `runTime` 0 after the state change, so the recorder now keeps the last `runTime` seen while running.
 - **Tickrate.** Momentum surf maps run at 66 ticks per second and bhop maps at 100. Store the tick interval with every attempt.
 - **Labels.** Every recording is labelled as one of: your own run, someone else's replay, or a ghost. The label is shown everywhere it appears.
 - **Retention.** Every attempt is kept, compressed. The viewer has a manual "delete older than" button.
