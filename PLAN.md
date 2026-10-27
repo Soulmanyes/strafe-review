@@ -293,7 +293,8 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **URL.** `/compare#<map>/<id>,<id>,...`, with the first id as the reference.
 - **Picker.**
   - The list holds every recording on the map + tickrate picked at the top, with no replay fragments. Drills are behind a "Show drills" toggle.
-  - Click a recording to add or remove it, up to 4. "Make reference" moves a pick first.
+  - A one-column list with fixed columns (label, started, end, jump-1 landing, action), so picking a row never resizes it. Click a recording to add or remove it, up to 4. "Make reference" moves a pick first.
+  - Missed ticks use `runGaps()`, inside the run only. The attempt file's `gaps` also counts a replay's pause after its end (1499 for player A vs 3).
 - **Colours.** Blue, pink, amber and violet in pick order. Green and red are left out, because they mean optimal and loss.
 - **Stats** (`summarize()`): definitions are shared with the rest of the viewer, so the same jump shows the same number everywhere.
   - **Gain %:** sum(gain) / sum(ideal) over jumps 1+, as the jump strip.

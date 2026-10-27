@@ -3,15 +3,28 @@
 #picker .sec-head button { margin-left: 0; }
 #graph .sec-head button + button { margin-left: 0; }
 #picker .sec-head .drill-toggle { margin-left: auto; display: flex; gap: 6px; align-items: center; color: var(--muted); }
-#pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; }
-.pick { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }
+#pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }
+.pick {
+	display: grid;
+	grid-template-columns: 12px 190px 170px 230px 150px 130px;
+	align-items: center;
+	gap: 12px;
+	min-height: 32px;
+	padding: 3px 8px;
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 13px;
+	white-space: nowrap;
+}
 .pick:hover { border-color: var(--accent); }
-.pick.on { border-width: 2px; padding: 5px 7px; }
+.pick.on { background: var(--card-hi); }
 .pick.off { opacity: 0.5; cursor: default; }
 .pick .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid var(--border); }
-.pick .ref { font-size: 11px; color: var(--text); background: #ffffff18; border-radius: 4px; padding: 0 5px; }
+.pick .ref { font-size: 11px; color: var(--text); background: #ffffff18; border-radius: 4px; padding: 1px 6px; justify-self: start; }
 .pick .meta { color: var(--muted); }
-.pick button { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+.pick button { padding: 1px 8px; font-size: 12px; justify-self: start; }
 
 table.cmp { border-collapse: collapse; font: 13px ui-monospace, monospace; }
 table.cmp th, table.cmp td { padding: 4px 18px 4px 0; border-bottom: 1px solid #ffffff10; text-align: left; vertical-align: top; }

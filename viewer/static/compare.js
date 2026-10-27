@@ -135,14 +135,24 @@ function showPicker() {
 		const at = picks.indexOf(h.id);
 		const row = document.createElement('div');
 		row.className = `pick${at >= 0 ? ' on' : ''}${at < 0 && picks.length >= MAX_PICKS ? ' off' : ''}`;
-		if (at >= 0) row.style.borderColor = COLORS[at];
+		if (at >= 0) {
+			row.style.borderColor = COLORS[at];
+			row.style.boxShadow = `inset 0 0 0 1px ${COLORS[at]}`; // 2 px look without a size change
+		}
 		const sw = document.createElement('span');
 		sw.className = 'sw';
 		sw.style.background = at >= 0 ? COLORS[at] : 'transparent';
-		const meta = document.createElement('span');
-		meta.className = 'meta';
-		meta.textContent = [when(h.started), endText(h), h.j1Land == null ? '' : `jump 1 lands ${h.j1Land.toFixed(0)}`].filter(Boolean).join(' · ');
-		row.append(sw, labelChip(h), meta);
+		// fixed columns, so picking a row never changes its size: swatch, label, started, end, jump 1, action
+		const col = (text, cls = 'meta') => {
+			const s = document.createElement('span');
+			s.className = cls;
+			s.textContent = text;
+			return s;
+		};
+		const lab = document.createElement('span');
+		lab.append(labelChip(h));
+		row.append(sw, lab, col(when(h.started)), col(endText(h)), col(h.j1Land == null ? '' : `jump 1 lands ${h.j1Land.toFixed(0)}`));
+		if (at < 0) row.append(col(''));
 		if (at === 0) {
 			const r = document.createElement('span');
 			r.className = 'ref';
@@ -324,7 +334,7 @@ function showStats() {
 		{ group: 'Run' },
 		{ name: 'End', vals: H.map(endText), nums: H.map((h, i) => (finished[i] ? h.runTime : NaN)), best: 'min' },
 		{ name: 'Jumps landed', tip: 'Jumps from jump 1 on that landed before the run end', vals: S.map((s) => `${s.landed} of ${s.jumps}`) },
-		{ name: 'Missed ticks', tip: 'Ticks the HUD missed inside the run', vals: H.map((h) => String(h.runGaps ?? h.gaps ?? '–')) },
+		{ name: 'Missed ticks', tip: 'Ticks the HUD missed inside the run', vals: shown.map((r) => String(runGaps(r.head, r.d))) },
 		{ group: 'Strafing (jumps 1+)' },
 		{
 			name: 'Gain %',
