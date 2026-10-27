@@ -18,6 +18,15 @@ const TIMER_FINISHED = 3;
 const REPLAY_NONE = 0;
 
 const PRESTART_SECONDS = 2;
+// Rows kept after a non-finish end. mom_restart_stage ends the timer as DISABLED, the same
+// state as practice mode, so the reason is judged from what happens in these rows.
+const TAIL_SECONDS = 0.5;
+const TAIL_WALL_MS = 2000; // give up waiting for tail ticks (game paused, menu)
+// A reset teleports: horizontal speed falls to about 0 on the first tick after the end
+// (361 to 0 in the 2026-10-27 test). Bhopping back into the start zone also primes the
+// timer, but speed only bleeds off over several ticks (42, 39, 21, 3, 0).
+const TELEPORT_SPEED = 5;
+const TELEPORT_FROM = 30; // only judge a teleport when the run was moving at least this fast
 const CHUNK_CHARS = 900; // $.Msg cuts at 2047 chars (probe v1); stay well under
 const CHUNKS_PER_FRAME = 200; // long runs are spread over frames so a dump never hitches
 
@@ -46,6 +55,16 @@ interface Attempt {
 	preRows: number;
 	gaps: number;
 	runTime: number; // last runTime seen while running; reset and stop read 0 after the state change
+	tail: Tail | null; // set once the timer stopped running; the attempt is dumped when it is over
+}
+
+interface Tail {
+	state: number; // timer state the run ended in
+	endRows: number; // rows up to and including the end tick
+	endTick: number;
+	endSpeed: number;
+	untilTick: number;
+	untilMs: number;
 }
 
 let interval = MomentumMovementAPI.GetTickInterval();
@@ -134,7 +153,54 @@ function sample() {
 		attempt.rows.push(row);
 		const status = MomentumTimerAPI.GetObservedTimerStatus();
 		if (status.state === TIMER_RUNNING) attempt.runTime = status.runTime;
+		if (attempt.tail && tick >= attempt.tail.untilTick) finishTail();
 	}
+}
+
+function hspeed() {
+	const vel = MomentumPlayerAPI.GetVelocity();
+	return Math.hypot(vel.x, vel.y);
+}
+
+// The run stopped without finishing: keep recording a short tail, then judge the reason
+function startTail(state: number) {
+	if (!attempt) return;
+	attempt.tail = {
+		state,
+		endRows: attempt.rows.length,
+		endTick: lastTick,
+		endSpeed: hspeed(),
+		untilTick: lastTick + Math.ceil(TAIL_SECONDS / interval),
+		untilMs: Date.now() + TAIL_WALL_MS
+	};
+}
+
+function finishTail() {
+	const tail = attempt?.tail;
+	if (!attempt || !tail) return;
+	const timers = attempt.events.filter(
+		(e) => (e as { kind: string }).kind === 'timer'
+	) as { state: number }[];
+	// IsInPracticeMode() read false half a second after practice mode stopped a run
+	// (play test 2026-10-27), so the event decides
+	const practice = attempt.events.some((e) => (e as { kind: string; on?: boolean }).kind === 'practice' && (e as { on: boolean }).on);
+	// Loading a savestate stops the timer as DISABLED; its event comes on the same tick, just
+	// before the timer's. Creating one mid-run fires the same event, but earlier.
+	const savestate = attempt.events.some(
+		(e) => (e as { kind: string; tick: number }).kind === 'savestate' && (e as { tick: number }).tick >= tail.endTick - 1
+	);
+	const primed = tail.state === TIMER_PRIMED || timers.some((e) => e.state === TIMER_PRIMED);
+	const speeds = attempt.rows.slice(tail.endRows).map((row) => {
+		const f = row.split(',');
+		return Math.hypot(Number(f[5]), Number(f[6]));
+	});
+	const teleported = tail.endSpeed >= TELEPORT_FROM && speeds.length > 0 && speeds[0] < TELEPORT_SPEED;
+	let reason = 'stop';
+	if (practice || MomentumPlayerAPI.IsInPracticeMode()) reason = 'practice';
+	else if (savestate) reason = 'savestate';
+	else if (teleported) reason = 'reset';
+	else if (primed) reason = 'zone'; // back in the start zone without a teleport
+	endAttempt(reason);
 }
 
 function startAttempt() {
@@ -165,7 +231,8 @@ function startAttempt() {
 		events: [],
 		preRows: ring.length,
 		gaps: 0,
-		runTime: 0
+		runTime: 0,
+		tail: null
 	};
 }
 
@@ -176,10 +243,11 @@ function endAttempt(reason: string) {
 		...attempt.head,
 		cols: COLS,
 		preRows: attempt.preRows,
+		postRows: attempt.tail ? attempt.rows.length - attempt.tail.endRows : 0,
 		rows: attempt.rows.join(';'),
 		events: attempt.events,
 		reason,
-		runTime: status.state === TIMER_FINISHED ? status.runTime : attempt.runTime,
+		runTime: attempt.tail ? attempt.runTime : status.state === TIMER_FINISHED ? status.runTime : attempt.runTime,
 		gaps: attempt.gaps,
 		ended: Date.now()
 	});
@@ -202,11 +270,15 @@ function event(kind: string, fields: Record<string, unknown>) {
 function onTimerState() {
 	const status = MomentumTimerAPI.GetObservedTimerStatus();
 	if (status.state === TIMER_RUNNING && lastState !== TIMER_RUNNING) {
+		if (attempt?.tail) finishTail(); // started again inside the tail
 		endAttempt('restart'); // only if one was still open, e.g. a missed state change
 		startAttempt();
 	} else if (lastState === TIMER_RUNNING && status.state !== TIMER_RUNNING) {
 		event('timer', { state: status.state, runTime: status.runTime });
-		endAttempt(status.state === TIMER_FINISHED ? 'finish' : status.state === TIMER_PRIMED ? 'reset' : 'stop');
+		if (status.state === TIMER_FINISHED) endAttempt('finish');
+		else startTail(status.state);
+	} else if (attempt?.tail) {
+		event('timer', { state: status.state, runTime: status.runTime });
 	}
 	lastState = status.state;
 }
@@ -237,12 +309,19 @@ function onTargetChange(why: string) {
 
 function loop() {
 	guard('sample', sample);
+	if (attempt?.tail && Date.now() > attempt.tail.untilMs) guard('tail', finishTail);
 	guard('flush', flush);
 	$.Schedule(0, loop);
 }
 
 $.Schedule(0, loop);
 $.RegisterForUnhandledEvent('OnObservedTimerStateChange', () => guard('timer', onTimerState));
+$.RegisterForUnhandledEvent('OnMomentumPlayerPracticeModeStateChange', (on) =>
+	guard('practice', () => event('practice', { on }))
+);
+$.RegisterForUnhandledEvent('OnSaveStateUpdate', (count, current, usingMenu) =>
+	guard('savestate', () => event('savestate', { count, current, usingMenu }))
+);
 $.RegisterForUnhandledEvent('OnJumpStarted', () => guard('jump', onJump));
 $.RegisterForUnhandledEvent('ObserverTargetChanged', () => guard('target', () => onTargetChange('target')));
 $.RegisterForUnhandledEvent('OnObservedTimerReplaced', () => guard('replaced', () => onTargetChange('replaced')));

@@ -31,7 +31,8 @@ def rows(attempt):
 
 def check(attempt):
     data = rows(attempt)
-    run = data[attempt["preRows"]:]
+    post = attempt.get("postRows", 0)  # rows after a non-finish end (format 1 files may lack it)
+    run = data[attempt["preRows"]:len(data) - post]
     expected = round(attempt["runTime"] / attempt["interval"])
     got = len(run) + attempt["gaps"]
     ticks = [r["tick"] for r in data]
@@ -43,7 +44,7 @@ def check(attempt):
         f" style={attempt['style']} interval={attempt['interval']:.4f} practice={attempt['practice']}"
     )
     print(
-        f"   rows {len(data)} (pre {attempt['preRows']}, run {len(run)}), gaps {attempt['gaps']}, "
+        f"   rows {len(data)} (pre {attempt['preRows']}, run {len(run)}, post {post}), gaps {attempt['gaps']}, "
         f"runTime {attempt['runTime']:.3f}s, jumps {len(jumps)}, ticks not increasing {backwards}"
     )
     if attempt["reason"] == "finish":

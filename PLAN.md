@@ -75,7 +75,14 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
 - **Recorder v1 (2026-10-27).**
   - A 2-second ring buffer runs all the time (`ceil(2 / interval)` rows, re-sized on `LevelInitPostEntity`). When the timer starts, the attempt copies the ring and keeps appending; `preRows` marks where the run starts.
   - Jump 1 takes off inside the start zone, before the timer starts. The recorder does not define jumps: `move` (air/walk) in every row and raw `OnJumpStarted` + `GetLastJumpStats()` events are stored, and the viewer finds jump 1 as the air segment around the start.
-  - End reasons: `finish` (RUNNING to FINISHED), `reset` (to PRIMED), `stop` (to DISABLED), `target` (`ObserverTargetChanged`), `replaced` (`OnObservedTimerReplaced`), `level` (map change), `restart` (a start while one was still open).
+  - End reasons (changed 2026-10-27 after a play test): a run that stops without finishing keeps recording for 0.5 s (`postRows` rows after the end), then the reason is judged:
+    - `practice`: an `OnMomentumPlayerPracticeModeStateChange` (on) event. `IsInPracticeMode()` still read false 0.5 s after practice mode stopped a run.
+    - `savestate`: a savestate event on the end tick or the tick before. Loading a savestate (the owner's practice routine, savestate menu) stops the timer as DISABLED; the game's real practice mode was not used.
+    - `reset`: horizontal speed falls from 30+ to under 5 on the first tick after the end (a teleport). `mom_restart_stage` (the owner's `r`) ends the timer as DISABLED then PRIMED; 361 to 0 in one tick.
+    - `zone`: the timer went PRIMED without a teleport: bhopped back into the start zone (speed bled off 42, 39, 21, 3, 0).
+    - `stop`: anything else that ends as DISABLED.
+    - Savestate updates are stored as `savestate` events, practice changes as `practice` events.
+  - Other end reasons: `finish` (RUNNING to FINISHED), `target` (`ObserverTargetChanged`), `replaced` (`OnObservedTimerReplaced`), `level` (map change), `restart` (a start while one was still open).
   - Labels: `replay` when `GetReplayState()` is not NONE or `GetObservedRunMetadata()` is set (with player name and replay file), else `own`. `practice` is stored too.
 - **Wire format 1.** Every line is `[panorama] SRREC <id> ...`:
   - `<id> <i>/<n> <text>`: chunk i of n, at most 900 characters. The chunks joined in order are one JSON object.
@@ -93,7 +100,7 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Finish: run rows + gaps = 2086, `round(runTime / interval)` = 2086. Tick numbering is exact. 10 gaps in 20.9 s.
   - Replay (player E): `tick - rtick` stayed constant in 1269 of 1270 rows. The replay ended as `replaced` when it was stopped.
   - Keys while spectating a replay look like the replay's keys (A/D alternate, 0 rows with no key), not the local player's.
-  - Practice mode and bhopping back into the start zone both end the timer as DISABLED (`stop`), not PRIMED. A reset gave PRIMED; one other attempt ended as DISABLED after 11.6 s from an unknown cause.
+  - Practice mode and bhopping back into the start zone both end the timer as DISABLED (`stop`), not PRIMED. (Later test, same day: bhopping back in gave PRIMED; see the end reasons above.) A reset gave PRIMED; one other attempt ended as DISABLED after 11.6 s from an unknown cause.
   - Non-finish ends read `runTime` 0 after the state change, so the recorder now keeps the last `runTime` seen while running.
 - **Collector v1 (2026-10-27).** `collector/collector.py`, with the wire-format reader in `collector/srrec.py` (also used by `check_recorder.py`).
   - Reads `yaw.log` from the start, then follows it. Only complete lines count. A truncated or replaced log is read again from the start.
