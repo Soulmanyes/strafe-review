@@ -246,6 +246,10 @@ The owner asked for a separate page that updates by itself the moment an attempt
     - Lanes: speed (this jump, usual, best), turn speed with this jump's optimal turn and its 85-115 % band, keys (needed key vs held, red when wrong or none) and lost vs usual (up = worse).
     - Strafe starts are dashed lines, and check ranges are shaded red. Hover shows every value at a tick.
 - **Replays recorded twice.** Momentum replays open with the end of the player's previous run and a reset: 940-958 u/s, then a teleport to 0, inside the 2 s kept before the timer starts. `findJumps` already skips it. A replay that starts over after its end is recorded again until it is stopped: player D gave a second 4-row attempt ending as `replaced`. The drill page keeps only the longest recording per `replayFile`, and only replays whose jump 1 landed.
+- **Drills vs runs (owner, 2026-10-27).** A drill is an own attempt that didn't finish and landed 7 jumps or fewer. That covers jump-1 and SSJ practice ("6 or 7 jumps, as SSJ is a big thing in bhop").
+  - `server.py` adds `landed` to each list entry: jumps from jump 1 on that landed before the run end.
+  - The main page hides drills by default, behind a "Show drills (N)" toggle saved in the browser. Shown drills get a purple "Drill · N jumps" chip.
+  - The drill page always uses every own attempt.
 - **Known limit.** Attempts already loaded keep the weak-takeoff verdict from load time while new attempts come in. Reload the page to redo it.
 
 ### Comparison

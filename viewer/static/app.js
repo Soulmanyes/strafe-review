@@ -63,7 +63,14 @@ let drag = null;
 let gutterText = []; // [text, y]: drawn after the lane clip is lifted
 let selMistake = null; // the mistake picked in the list, outlined on the graph
 const SETTINGS_KEY = 'strafe-review-checks';
+const DRILLS_KEY = 'strafe-review-show-drills';
+// A drill: an own attempt that didn't finish and landed this many jumps or fewer (jump 1 or SSJ practice)
+const DRILL_MAX_JUMPS = 7;
 
+
+function isDrill(h) {
+	return h.label !== 'replay' && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
+}
 
 function labelText(h) {
 	return h.label === 'replay' ? `Replay: ${h.player || 'unknown player'}` : 'Own run';
@@ -71,8 +78,9 @@ function labelText(h) {
 
 function labelChip(h) {
 	const el = document.createElement('span');
-	el.className = `chip ${h.label === 'replay' ? 'replay' : 'own'}`;
-	el.textContent = labelText(h);
+	const drill = isDrill(h);
+	el.className = `chip ${h.label === 'replay' ? 'replay' : drill ? 'drill' : 'own'}`;
+	el.textContent = drill ? `Drill · ${h.landed} jump${h.landed === 1 ? '' : 's'}` : labelText(h);
 	return el;
 }
 
@@ -94,13 +102,18 @@ async function loadList() {
 	const box = $('list');
 	box.replaceChildren();
 	if (!list.length) box.textContent = 'No attempts saved yet.';
-	const maps = [...new Set(list.map((a) => a.dir))];
+	const showDrills = $('show-drills').checked;
+	$('drill-count').textContent = list.filter(isDrill).length;
+	// the open attempt stays listed even when it is a hidden drill
+	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');
+	const visible = list.filter((a) => showDrills || !isDrill(a) || `${a.dir}/${a.id}` === openKey);
+	const maps = [...new Set(visible.map((a) => a.dir))];
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
 		title.textContent = m;
 		box.append(title);
-		for (const a of list.filter((x) => x.dir === m)) {
+		for (const a of visible.filter((x) => x.dir === m)) {
 			const b = document.createElement('button');
 			b.className = 'att';
 			b.dataset.key = `${a.dir}/${a.id}`;
@@ -765,6 +778,11 @@ $('jump1').onclick = () => {
 	if (cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 };
 $('refresh').onclick = loadList;
+$('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
+$('show-drills').onchange = () => {
+	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');
+	loadList();
+};
 // Check settings open as a panel under the toolbar, over the graph
 $('checks-btn').onclick = () => {
 	const sec = $('settings');
@@ -792,5 +810,8 @@ loadList().then(async () => {
 	if (dir && id) {
 		await open(dir, id);
 		if (what === 'j1' && cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
-	} else if (list.length) open(list[0].dir, list[0].id);
+	} else {
+		const first = list.find((a) => $('show-drills').checked || !isDrill(a)) || list[0];
+		if (first) open(first.dir, first.id);
+	}
 });
