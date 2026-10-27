@@ -4,7 +4,9 @@
 //
 // A strafe is a run of one turn direction (ideal_key) inside a jump; ticks with no clear turn
 // (|avg yaw| <= 0.3°) don't break it. Only jumps 1+ and rows up to the run end are checked.
-// Ticks with +left/+right held turn at a fixed cl_yawspeed, so no turning check judges them.
+// Ticks with +left/+right held turn at a fixed cl_yawspeed, so the checks that judge how the mouse
+// turned (angle, turn speed, keys while turning) skip them. Timing checks (early reversal, late first
+// strafe, switch) still count them: the owner holds +left into jump 1 on purpose.
 
 // Defaults come from the owner's 14 own attempts on bhop_ambience (PLAN.md "Mistake checks").
 const CHECKS = [
@@ -44,7 +46,9 @@ function keyDir(b) {
 
 // Rows worth judging: in the air at 100+ u/s. Falling at near-zero speed has ideal gain near 30 u/s
 // per tick, which would swamp every loss sum (same rule as the page's lane scales).
-const strafing = (d, i) => !d.ground[i] && d.speed[i] > 100;
+// A tick losing more than COLLISION u/s is a wall or ramp hit, not strafing, so it's left out too.
+const COLLISION = 10;
+const strafing = (d, i) => !d.ground[i] && d.speed[i] > 100 && !(d.gain[i] < -COLLISION);
 const turnBtn = (d, i) => (d.buttons[i] & (BIT.LEFT | BIT.RIGHT)) !== 0;
 
 // Rows a check may look at in jump j: its air time, cut at the run end
@@ -166,10 +170,10 @@ function runChecks(d, jumps, endIdx, settings, baseline) {
 		// where that turn began, which in a bhop is often before the landing, so later jumps aren't flagged
 		// for a strafe carried over the ground tick.
 		const first = strafes[0];
-		if (cfg.early.on && first && strafes.length > 1 && !first.gap && !first.btn) {
+		if (cfg.early.on && first && strafes.length > 1 && !first.gap) {
 			const from = turnStart(d, s, first.dir);
 			const len = d.tick[first.i1] - d.tick[from] + 1;
-			if (len < cfg.early.minTicks) add('early', j, from, first.i1, `${tag}: first strafe ${len} ticks, then reversed (min ${cfg.early.minTicks})`);
+			if (len < cfg.early.minTicks) add('early', j, s, first.i1, `${tag}: first strafe ${len} ticks, then reversed (min ${cfg.early.minTicks})`);
 		}
 
 		// Late first strafe: takeoff to the first tick turning with the matching key
@@ -182,7 +186,7 @@ function runChecks(d, jumps, endIdx, settings, baseline) {
 				}
 			}
 			const delay = at < 0 ? NaN : d.tick[at] - d.tick[s];
-			if (delay > cfg.lateFirst.maxTicks && !turnBtn(d, s)) add('lateFirst', j, s, at - 1, `${tag}: first correct key ${delay} ticks after takeoff`);
+			if (delay > cfg.lateFirst.maxTicks) add('lateFirst', j, s, at - 1, `${tag}: first correct key ${delay} ticks after takeoff`);
 		}
 
 		for (const st of strafes) {
@@ -194,7 +198,8 @@ function runChecks(d, jumps, endIdx, settings, baseline) {
 				if (cfg.wide.on && inW.length >= 4 && mW > cfg.wide.ratio) add('wide', j, st.i0, st.i1, `${sname}: yawRatio ${mW.toFixed(2)} (over ${cfg.wide.ratio})`, lostOver(d, inW[0], inW[inW.length - 1]));
 				const inN = interior(d, st, cfg.narrow.skip).filter((i) => Number.isFinite(d.ratio[i]));
 				const mN = median(inN.map((i) => d.ratio[i]));
-				if (cfg.narrow.on && inN.length >= 4 && mN < cfg.narrow.ratio) add('narrow', j, st.i0, st.i1, `${sname}: yawRatio ${mN.toFixed(2)} (under ${cfg.narrow.ratio})`, lostOver(d, inN[0], inN[inN.length - 1]));
+				const barely = mN < 0.05 ? 'barely turning, ' : '';
+				if (cfg.narrow.on && inN.length >= 4 && mN < cfg.narrow.ratio) add('narrow', j, st.i0, st.i1, `${sname}: ${barely}yawRatio ${mN.toFixed(2)} (under ${cfg.narrow.ratio})`, lostOver(d, inN[0], inN[inN.length - 1]));
 				const inU = interior(d, st, cfg.uneven.skip).map((i) => Math.abs(d.yaws[i])).filter(Number.isFinite);
 				const mid = median(inU);
 				const spread = mid > 0 ? (pct(inU, 0.9) - pct(inU, 0.1)) / mid : NaN;
@@ -225,7 +230,7 @@ function runChecks(d, jumps, endIdx, settings, baseline) {
 			const sw = switchesOf(d, j, endIdx);
 			for (let k = 1; k < strafes.length; k++) {
 				const st = strafes[k];
-				if (st.gap || strafes[k - 1].gap || st.btn || strafes[k - 1].btn) continue;
+				if (st.gap || strafes[k - 1].gap) continue;
 				const r = st.i0;
 				let best = null;
 				for (const w of sw) {

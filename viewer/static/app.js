@@ -199,7 +199,7 @@ function showMistakes() {
 		b.onclick = () => {
 			selMistake = m;
 			showMistakes();
-			const j = cur.jumps.find((jj) => m.i0 >= jj.s && m.i0 < jj.e);
+			const j = cur.jumps.find((jj) => jj.num && jj.num === m.jump);
 			// a mistake inside one jump zooms to that jump, a run-wide one (imbalance) to the whole run
 			if (j && m.check !== 'balance') zoomTo({ x0: Math.min(j.x0, cur.d.x[m.i0]), x1: Math.max(j.x1, cur.d.x[m.i1]) });
 			else whole();

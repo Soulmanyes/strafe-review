@@ -180,7 +180,8 @@ Each check can be switched on or off in the viewer settings. Thresholds start as
 
 - **Files.** `viewer/static/data.js` (parse and jump finding, moved out of `app.js` so node can load it), `viewer/static/checks.js` (the checks, pure functions, default thresholds in `CHECKS`) and `viewer/check_mistakes.js` (node harness: `node viewer/check_mistakes.js [--list]` prints mistakes per attempt, counts per check and the strafe stats below).
 - **Strafe split.** A strafe is a run of one turn direction (`ideal_key`, the 5-tick average yaw past 0.3°/tick) inside a jump. Ticks with no clear turn don't break it. Strafes or switches that span a missed tick are skipped.
-- **Rows judged.** Only jumps 1+, cut at the run end, and only rows in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30 u/s per tick and swamped the loss sums). `+left`/`+right` ticks are left out of every turning check, and the Keys lane no longer draws them as "Wrong".
+- **Rows judged.** Only jumps 1+, cut at the run end, and only rows in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30 u/s per tick and swamped the loss sums). Ticks losing more than 10 u/s are collisions (one wall hit read -234 u/s and made a run look 20 % left vs 83 % right), so they are left out too.
+- **`+left`/`+right` ticks** are left out of the checks that judge how the mouse turned: wide, narrow, uneven, imbalance, wrong key and no key. The Keys lane no longer draws them as "Wrong". Timing checks (early reversal, late first strafe, switch) still count them: 10 of 15 own jump 1s take off with `+left` held, and skipping those hid jump 1 from exactly these checks.
 - **Speed lost** = sum of ideal - gain over the rows involved. Imbalance: the worse side's ideal times the gap. Weak takeoff: median minus this takeoff.
 - **Weak takeoff baseline.** `server.py` adds `j1Takeoff` to each list entry (a Python copy of `findJumps`; matches the JS on all 15 own attempts). The page takes the median of the other own attempts on the same map and tick interval.
 - **Settings** are saved in `localStorage` as only the values that differ from the defaults, so changed defaults still reach the owner.
@@ -195,7 +196,8 @@ Each check can be switched on or off in the viewer settings. Thresholds start as
   - Switch: offset of the nearest key switch (within 8 ticks) from the reversal; flagged at 4+ ticks early or 2+ late.
   - W held in air: off; 5+ air ticks with W.
 - **Re-measured with this split** (15 own attempts): switch offsets -7: 1, -6: 1, -5: 4, -4: 5, -3: 8, -2: 30, -1: 39, 0: 46, 1: 20, 2: 4, 3: 7, 4: 3, 7: 1 (169); middle strafes median 31 (5-95 %: 20-49). The earlier 132-switch figure came from a different split.
-- **First counts** with everything on (16 attempts incl. 1 replay): early 5, late first 11, takeoff 3, wide 12, narrow 18, uneven 8, imbalance 3, wrong key 15 (13 in the replay, whose keys seem to lag the turn), no key 9, switch 51 (35 in the replay).
+- **Too narrow at 0.00** means the yaw stopped in the middle of a strafe (keys held on 25-57 % of those ticks, gain 4-10 of 35-44 u/s ideal). The entry then says "barely turning".
+- **First counts** with everything on (16 attempts incl. 1 replay): early 5, late first 11, takeoff 3, wide 12, narrow 18, uneven 8, imbalance 1, wrong key 15 (13 in the replay, whose keys seem to lag the turn), no key 9, switch 54 (36 in the replay). Jump 1 of own runs: 4 switch entries (switched 4-6 ticks early on the first reversal after the `+left` prestrafe).
 
 - **Early reversal:** the first strafe after takeoff is too short, so you switched the other way too soon after the prestrafe.
 - **Late first strafe:** ticks between takeoff and the first air strafe.
