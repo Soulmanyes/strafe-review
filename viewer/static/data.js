@@ -44,7 +44,8 @@ function parse(a) {
 	if (d.derived) {
 		for (let i = 0; i < n; i++) {
 			const v = i > 0 ? d.speed[i - 1] : NaN;
-			const ok = i > 0 && d.gap[i] === 0 && !d.ground[i];
+			// a rise of more than one tick's air add is a teleport, not strafing (replays open with a teleport-in)
+			const ok = i > 0 && d.gap[i] === 0 && !d.ground[i] && d.speed[i] - v <= AIR_ADD;
 			d.gain[i] = ok ? d.speed[i] - v : NaN;
 			d.ideal[i] = ok ? Math.sqrt(v * v + AIR_ADD * AIR_ADD) - v : NaN;
 		}
@@ -80,7 +81,7 @@ function parse(a) {
 function findJumps(d, preRows) {
 	const takeoffs = [];
 	for (let i = 1; i < d.n; i++) if (d.vz[i] > 100 && d.vz[i - 1] <= 0.5) takeoffs.push(i);
-	const jumps = takeoffs.map((s, k) => {
+	let jumps = takeoffs.map((s, k) => {
 		const stop = k + 1 < takeoffs.length ? takeoffs[k + 1] : d.n;
 		let e = s + 1;
 		while (e < stop && !d.ground[e]) e++;
@@ -96,6 +97,17 @@ function findJumps(d, preRows) {
 	});
 	// Jump 1 takes off in the start zone: the one in the air when the timer starts, else the next one
 	const p = Math.min(preRows || 0, d.n - 1);
+	// Hops that end before the last teleport ahead of the timer start aren't this run: a replay opens with
+	// the end of the player's previous run, then a teleport into the start zone. A teleport is the speed
+	// going from 100+ to standstill, or from standstill to 100+, in one tick.
+	let tp = -1;
+	for (let i = 1; i <= p; i++) {
+		if (d.gap[i] > 0) continue;
+		const a = d.speed[i - 1];
+		const b = d.speed[i];
+		if ((a > 100 && b < 1) || (a < 1 && b > 100)) tp = i;
+	}
+	if (tp > 0) jumps = jumps.filter((j) => j.e > tp);
 	let j1 = jumps.findIndex((j) => j.s <= p && j.e > p);
 	if (j1 < 0) j1 = jumps.findIndex((j) => j.s >= p);
 	jumps.forEach((j, k) => (j.num = j1 < 0 || k < j1 ? 0 : k - j1 + 1));

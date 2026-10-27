@@ -311,6 +311,10 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - Scales cover every shown recording.
   - Each recording is cut at its run end (`runEnd()` in data.js: before `postRows` and no later than `runTime`). A replay paused at its end keeps sending rows.
   - Hover shows every recording's values at that x, with each one's own tick.
+- **Teleport fix (owner report, 2026-10-27).** player C's replay showed a "pre" hop at -193 ticks with 837 %. A replay opens with the end of the player's previous run. Row 10 goes from 0 to 531 u/s in one tick, a teleport, and the rebuilt gain counted it as +530 against an ideal of 30.
+  - `findJumps()` drops hops that end before the last teleport ahead of the timer start. A teleport here is speed going from 100+ to under 1 u/s, or the other way, in one tick.
+  - The rebuilt-from-speed gain leaves out any rise above 30 u/s in one tick.
+  - Jumps with no measurable row stay "?", as in player B's replay with 634 missed ticks.
 - **Fixed in passing.** `findJumps()` now skips rows with no gain, such as a replay row after missed ticks. Before, one such row turned the whole jump's gain % into NaN ("?" on the strip).
 
 #### Ghost overlay v1 (2026-10-27)
