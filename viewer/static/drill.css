@@ -81,3 +81,22 @@ button.stat { border-color: var(--own); }
 .card.hov { border-color: #ffe066; background: var(--card-hi); }
 .card.fresh { animation: fresh 2.5s ease-out; }
 @keyframes fresh { from { box-shadow: 0 0 0 4px var(--accent); } to { box-shadow: 0 0 0 0 transparent; } }
+
+#focus { border: 2px solid var(--accent); }
+#focus .sec-head button:first-of-type { margin-left: auto; }
+#focus .sec-head button + button { margin-left: 0; }
+.verdict { font-size: 15px; margin-bottom: 8px; }
+.verdict .v-head { font: 15px ui-monospace, monospace; }
+.verdict .good { color: var(--own); }
+.verdict .bad { color: #ff8a8a; }
+.tips { margin: 6px 0 4px; padding-left: 20px; }
+.tips li { margin: 3px 0; }
+.strafes { border-collapse: collapse; font: 13px ui-monospace, monospace; margin: 6px 0 4px; }
+.strafes th { text-align: left; color: var(--muted); font: 600 12px system-ui; padding: 3px 14px 3px 0; border-bottom: 1px solid var(--border); }
+.strafes td { padding: 4px 14px 4px 0; border-bottom: 1px solid #ffffff10; }
+.strafes tr.worst td { background: #ff5c5c1a; }
+.strafes .bad { color: #ff8a8a; font-weight: 600; }
+.strafes .us { color: var(--muted); font-size: 12px; }
+.small { font-size: 12px; margin-top: 4px; }
+.more { font-size: 13px; margin: 4px 0; }
+.card.focus { box-shadow: 0 0 0 2px var(--accent); }

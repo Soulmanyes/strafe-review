@@ -35,6 +35,7 @@ let shown = { own: [], replays: [] }; // entries on the page now
 let fresh = new Set(); // keys that arrived live, flashed once
 let hoverKey = null;
 let renderToken = 0;
+let focusKey = null; // attempt picked for the focus panel; null = the latest
 
 const key = (h) => `${h.dir}/${h.id}`;
 const mapKey = (h) => `${h.dir}|${h.interval}`;
@@ -100,7 +101,19 @@ async function entry(h) {
 			if (Number.isFinite(l) && d.speed[i] > 100 && !(d.gain[i] < -10)) sum += l;
 			lost.push(sum);
 		}
-		const mistakes = runChecks(d, jumps, endIdx, loadSettings(), takeoffBaseline(h), h.label === 'replay').filter((m) => m.jump === 1);
+		const mistakes = runChecks(d, jumps, endIdx, loadSettings(), takeoffBaseline(h), h.label === 'replay')
+			.filter((m) => m.jump === 1)
+			.map((m) => ({ ...m, x0: d.x[m.i0] - t0, x1: d.x[m.i1] - t0 }));
+		const keys = [];
+		const want = [];
+		const opt = [];
+		const btn = [];
+		for (let i = j.s; i <= last; i++) {
+			keys.push(keyDir(d.buttons[i]));
+			want.push(d.ideal_key[i]);
+			opt.push(d.opt[i]);
+			btn.push(turnBtn(d, i) ? 1 : 0);
+		}
 		e = {
 			h,
 			k,
@@ -114,11 +127,56 @@ async function entry(h) {
 			land: d.speed[last],
 			pct: j.pct,
 			lostTotal: sum,
-			mistakes
+			mistakes,
+			keys,
+			want,
+			opt,
+			btn,
+			strafes: strafeStats(d, j, endIdx, t0)
 		};
 	}
 	cache.set(k, e);
 	return e;
+}
+
+// Per strafe of jump 1: gain %, speed lost, angle (median yawRatio, ends and +left/+right ticks
+// skipped), share of ticks with the matching key, and the key switch offset from the reversal
+function strafeStats(d, j, endIdx, t0) {
+	const sts = strafesOf(d, j, endIdx);
+	const sw = switchesOf(d, j, endIdx);
+	return sts.map((st, k) => {
+		let g = 0;
+		let id = 0;
+		let ok = 0;
+		const rs = [];
+		for (let i = st.i0; i <= st.i1; i++) {
+			if (strafing(d, i) && Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) {
+				g += d.gain[i];
+				id += d.ideal[i];
+			}
+			if (!turnBtn(d, i) && i >= st.i0 + 2 && i <= st.i1 - 2 && Number.isFinite(d.ratio[i])) rs.push(d.ratio[i]);
+			if (keyDir(d.buttons[i]) === st.dir) ok++;
+		}
+		let off = null;
+		if (k > 0 && !st.gap && !sts[k - 1].gap)
+			for (const w of sw) {
+				const o = d.tick[w.i] - d.tick[st.i0];
+				if (w.dir === st.dir && Math.abs(o) <= SWITCH_WINDOW && (off === null || Math.abs(o + 1) < Math.abs(off + 1))) off = o;
+			}
+		return {
+			num: k + 1,
+			dir: st.dir,
+			x0: d.x[st.i0] - t0,
+			x1: d.x[st.i1] - t0,
+			n: st.n,
+			lost: Math.max(id - g, 0),
+			pct: id > 0 ? (100 * g) / id : NaN,
+			ratio: median(rs),
+			keys: (100 * ok) / (st.i1 - st.i0 + 1),
+			sw: off,
+			btn: st.btn > 0
+		};
+	});
 }
 
 function maps() {
@@ -131,7 +189,14 @@ function maps() {
 function pick() {
 	const mk = $('map').value;
 	const own = list.filter((h) => mapKey(h) === mk && h.label !== 'replay').sort((a, b) => a.started - b.started);
-	const replays = list.filter((h) => mapKey(h) === mk && h.label === 'replay');
+	// A replay that starts over is recorded again (a few ticks before it was stopped): keep the
+	// longest recording of each replay file
+	const byFile = new Map();
+	for (const h of list.filter((x) => mapKey(x) === mk && x.label === 'replay')) {
+		const f = h.replayFile || h.id;
+		if (!byFile.has(f) || h.rowCount > byFile.get(f).rowCount) byFile.set(f, h);
+	}
+	const replays = [...byFile.values()];
 	if ($('scope').value === 'all' || !own.length) return { own, replays };
 	let from = own.length - 1;
 	while (from > 0 && own[from].started - own[from - 1].started < SESSION_GAP) from--;
@@ -163,6 +228,8 @@ async function render() {
 	const repE = (await Promise.all(replays.map(entry))).filter((e) => e && e.complete);
 	if (token !== renderToken) return; // a newer render started meanwhile
 	shown = { own: ownE, replays: repE };
+	if (focusKey && !ownE.some((e) => e.k === focusKey)) focusKey = null;
+	showFocus();
 	showStats();
 	drawTrend();
 	drawStack();
@@ -556,7 +623,7 @@ function showCards() {
 	es.forEach((e) => {
 		const n = shown.own.indexOf(e) + 1;
 		const card = document.createElement('button');
-		card.className = `card${e === b ? ' best' : ''}${fresh.has(e.k) ? ' fresh' : ''}${e.complete ? '' : ' cut'}`;
+		card.className = `card${e === focused() ? ' focus' : ''}${e === b ? ' best' : ''}${fresh.has(e.k) ? ' fresh' : ''}${e.complete ? '' : ' cut'}`;
 		card.dataset.key = e.k;
 		const top = document.createElement('div');
 		top.className = 'top';
@@ -580,7 +647,7 @@ function showCards() {
 		if (!w) m.classList.add('none');
 		card.append(top, cv, nums, m);
 		mini(cv, e, maxX, ranges);
-		card.onclick = () => openMain(e);
+		card.onclick = () => setFocus(e.k);
 		card.onmouseenter = () => setHover(e.k);
 		card.onmouseleave = () => setHover(null);
 		box.append(card);
@@ -595,7 +662,361 @@ function setHover(k) {
 	for (const c of document.querySelectorAll('.card')) c.classList.toggle('hov', c.dataset.key === k);
 }
 
+// ---------- focus: one jump 1 against your usual ----------
+
+const SIDE_NAME = { 1: 'left', '-1': 'right' };
+const KEY_NAME = { 1: 'A', '-1': 'D' };
+const FIX = {
+	early: 'Hold the first strafe longer before turning the other way.',
+	lateFirst: 'Press the strafe key the moment you leave the ground.',
+	takeoff: 'Build more prestrafe speed before the jump.',
+	wide: 'Turn the mouse slower in this strafe.',
+	narrow: 'Turn the mouse faster in this strafe.',
+	uneven: 'Keep one steady mouse speed through the strafe.',
+	wrongKey: 'Hold the key on the side you are turning to.',
+	noKey: 'Keep A or D held the whole time you turn.',
+	switch: 'Switch keys 1 tick before you reverse the mouse.',
+	wAir: 'Let go of W after takeoff.'
+};
+
+function focused() {
+	const own = shown.own;
+	return own.find((e) => e.k === focusKey) || own[own.length - 1] || null;
+}
+
+function setFocus(k) {
+	const latest = shown.own[shown.own.length - 1];
+	focusKey = latest && k === latest.k ? null : k;
+	showFocus();
+	showCards();
+	$('focus').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// Your usual for strafe `num`: medians over the other landed attempts that have that strafe
+function usual(f, num) {
+	const sts = shown.own.filter((e) => e.complete && e !== f).map((e) => e.strafes[num - 1]).filter(Boolean);
+	const m = (key) => median(sts.map((s) => s[key]).filter((v) => v !== null && Number.isFinite(v)));
+	return { runs: sts.length, pct: m('pct'), lost: m('lost'), ratio: m('ratio'), keys: m('keys'), sw: m('sw'), n: m('n') };
+}
+
+// Plain-words reasons a strafe did worse than usual, strongest first
+function strafeAdvice(s, u) {
+	const out = [];
+	if (Number.isFinite(s.ratio) && Number.isFinite(u.ratio)) {
+		if (s.ratio < u.ratio - 0.12) out.push(`you turned slower than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse faster`);
+		else if (s.ratio > u.ratio + 0.12) out.push(`you turned faster than usual (angle ${s.ratio.toFixed(2)}, usual ${u.ratio.toFixed(2)}): move the mouse slower`);
+	}
+	if (Number.isFinite(u.keys) && s.keys < u.keys - 10) out.push(`${KEY_NAME[s.dir]} was held on only ${s.keys.toFixed(0)} % of its ticks (usual ${u.keys.toFixed(0)} %)`);
+	if (s.sw !== null && (s.sw <= -3 || s.sw >= 1)) out.push(`you switched to ${KEY_NAME[s.dir]} ${Math.abs(s.sw)} tick${Math.abs(s.sw) === 1 ? '' : 's'} ${s.sw < 0 ? 'before' : 'after'} reversing the mouse (aim for 1 before)`);
+	if (Number.isFinite(u.n) && s.n < u.n - 8) out.push(`it was short: ${s.n} ticks (usual ${u.n.toFixed(0)})`);
+	if (s.btn) out.push('+left/+right was held in it');
+	return out;
+}
+
+function el(tag, cls, text) {
+	const x = document.createElement(tag);
+	if (cls) x.className = cls;
+	if (text !== undefined) x.textContent = text;
+	return x;
+}
+
+function showFocus() {
+	const box = $('focus-body');
+	box.replaceChildren();
+	const f = focused();
+	const latest = shown.own[shown.own.length - 1];
+	$('focus-title').textContent = !f ? 'Last jump 1' : f === latest ? 'Last jump 1' : `Jump 1 of #${shown.own.indexOf(f) + 1}`;
+	$('focus-latest').hidden = !f || f === latest;
+	$('focus-open').hidden = !f;
+	if (!f) {
+		box.textContent = 'No own attempt with a jump 1 here yet.';
+		drawFocus();
+		return;
+	}
+	const done = shown.own.filter((e) => e.complete && e !== f);
+	const b = best(done);
+	const medLand = median(done.map((e) => e.land));
+
+	// Verdict
+	const v = el('div', 'verdict');
+	const head = el('div', 'v-head');
+	head.append(el('b', '', `${when(f.h.started)}`));
+	if (f.complete) {
+		head.append(` · ${f.takeoff.toFixed(0)} → ${f.land.toFixed(0)} u/s · gain ${f.pct.toFixed(0)} %`);
+		if (Number.isFinite(medLand)) {
+			const dm = f.land - medLand;
+			head.append(el('span', dm >= 0 ? 'good' : 'bad', ` · ${dm >= 0 ? '+' : ''}${dm.toFixed(1)} vs your median`));
+		}
+		if (b) {
+			const db = f.land - b.land;
+			head.append(el('span', db >= 0 ? 'good' : 'muted', db >= 0 ? ' · new best' : ` · ${(-db).toFixed(1)} short of your best`));
+		}
+	} else head.append(` · takeoff ${f.takeoff.toFixed(0)} u/s · the run ended ${f.ticks} ticks in, before the landing`);
+	v.append(head);
+
+	// The strafe that lost the most compared with your usual for it
+	let worst = null;
+	for (const s of f.strafes) {
+		const u = usual(f, s.num);
+		if (u.runs < 3 || !Number.isFinite(u.lost)) continue;
+		const extra = s.lost - u.lost;
+		if (!worst || extra > worst.extra) worst = { s, u, extra };
+	}
+	const tips = [];
+	if (worst && worst.extra > 3) {
+		const why = strafeAdvice(worst.s, worst.u);
+		tips.push([
+			worst.extra,
+			`Strafe ${worst.s.num} (${SIDE_NAME[worst.s.dir]}) lost ${worst.extra.toFixed(1)} u/s more than usual` +
+				(why.length ? `: ${why.join('; ')}.` : '. Angle, keys and switch look normal there, so check its turn-speed line below.')
+		]);
+	}
+	// Air time with no turn at all after the first strafe (strafing stopped before the landing)
+	const s1 = f.strafes[0];
+	for (let i = 0, a = -1; i <= f.xs.length; i++) {
+		const idle = i < f.xs.length && !f.want[i] && s1 && f.xs[i] > s1.x1;
+		if (idle && a < 0) a = i;
+		if (!idle && a >= 0) {
+			const n = f.xs[i - 1] - f.xs[a] + 1;
+			if (n >= 8) {
+				const lost = f.lost[i - 1] - (a > 0 ? f.lost[a - 1] : 0);
+				tips.push([lost, `No turning for ${n} ticks (ticks ${f.xs[a]}–${f.xs[i - 1]}${i === f.xs.length && f.complete ? ', right up to the landing' : ''}), losing ${lost.toFixed(1)} u/s: keep strafing until you land.`]);
+			}
+			a = -1;
+		}
+	}
+	const top = f.mistakes[0];
+	if (top) tips.push([top.lost, `${top.name} (${top.lost.toFixed(1)} u/s): ${top.text}. ${FIX[top.check] || ''}`]);
+	if (!tips.length) tips.push([0, f.complete ? 'Nothing stands out against your usual. Every strafe was within 3 u/s of it.' : 'Too short to judge.']);
+	// biggest loss first
+	tips.sort((x, y) => y[0] - x[0]);
+	const ul = el('ul', 'tips');
+	for (const [, t] of tips) ul.append(el('li', '', t));
+	v.append(ul);
+	box.append(v);
+
+	// Per-strafe table
+	if (f.strafes.length) {
+		const t = el('table', 'strafes');
+		const hr = el('tr');
+		for (const h of ['Strafe', 'Ticks', 'Gain %', 'Lost u/s', 'Angle', 'Key held', 'Switch', '']) hr.append(el('th', '', h));
+		t.append(hr);
+		const fmt = (x, dec = 0) => (x === null || !Number.isFinite(x) ? '–' : x.toFixed(dec));
+		for (const s of f.strafes) {
+			const u = usual(f, s.num);
+			const tr = el('tr', worst && worst.s === s && worst.extra > 3 ? 'worst' : '');
+			const cell = (val, us, dec, worse) => {
+				const td = el('td');
+				td.append(el('span', worse ? 'bad' : '', val));
+				if (us !== undefined) td.append(el('span', 'us', ` ${us}`));
+				return td;
+			};
+			// red only in a strafe that lost more than usual: a different angle that cost nothing isn't a mistake
+			const lostWorse = Number.isFinite(u.lost) && s.lost - u.lost > 3;
+			tr.append(
+				el('td', '', `${s.num} ${SIDE_NAME[s.dir]}${s.btn ? ' (+left/right)' : ''}`),
+				cell(`${s.n}`, fmt(u.n), 0, lostWorse && Number.isFinite(u.n) && s.n < u.n - 8),
+				cell(fmt(s.pct), fmt(u.pct), 0, lostWorse && Number.isFinite(u.pct) && s.pct < u.pct - 10),
+				cell(fmt(s.lost, 1), fmt(u.lost, 1), 1, lostWorse),
+				cell(fmt(s.ratio, 2), fmt(u.ratio, 2), 2, lostWorse && Number.isFinite(u.ratio) && Math.abs(s.ratio - u.ratio) > 0.12),
+				cell(`${fmt(s.keys)} %`, fmt(u.keys), 0, lostWorse && Number.isFinite(u.keys) && s.keys < u.keys - 10),
+				cell(s.sw === null ? '–' : `${s.sw > 0 ? '+' : ''}${s.sw}`, s.num > 1 ? 'aim -1' : undefined, 0, s.sw !== null && (s.sw <= -3 || s.sw >= 1)),
+				el('td', 'muted', u.runs ? `usual from ${u.runs}` : '')
+			);
+			t.append(tr);
+		}
+		box.append(t);
+		box.append(el('div', 'muted small', 'Grey numbers = your usual (median of the other landed attempts shown). Angle = median yawRatio in the strafe (1 = optimal). Switch = key switch in ticks from the mouse reversal; -1 is one tick before.'));
+	}
+	if (f.mistakes.length > 1) {
+		const ml = el('div', 'more');
+		ml.append(el('b', '', 'All checks that fired: '));
+		ml.append(f.mistakes.map((m) => `${m.name} ${m.lost.toFixed(1)} u/s`).join(' · '));
+		box.append(ml);
+	}
+	drawFocus();
+}
+
+let focusGeom = null;
+const FOCUS_LANES = [
+	{ id: 'speed', title: 'Speed', unit: 'u/s', h: 120 },
+	{ id: 'turn', title: 'Turn speed', unit: '°/tick', h: 120 },
+	{ id: 'keys', title: 'Keys', unit: 'need / held', h: 44 },
+	{ id: 'vsmed', title: 'Lost vs usual', unit: 'up = worse', h: 90 }
+];
+
+function drawFocus() {
+	const boxEl = $('focus-box');
+	const w = boxEl.clientWidth;
+	const total = FOCUS_LANES.reduce((t, l) => t + l.h + LANE_GAP, 0) + AXIS_H;
+	const g = size($('focus-cv'), w, total);
+	const f = focused();
+	focusGeom = null;
+	if (!f) return;
+	const others = shown.own.filter((e) => e.complete && e !== f);
+	const b = best(others);
+	const maxX = Math.max(f.ticks, ...others.map((e) => e.ticks), 1);
+	const X = (x) => GUTTER + (x / maxX) * (w - GUTTER - 12);
+	const medSpeed = others.length >= 2 ? medianCurve(others, 'speed', maxX) : null;
+	const medLost = others.length >= 2 ? medianCurve(others, 'lost', maxX) : null;
+	const vsmed = f.xs.map((x, i) => (medLost && Number.isFinite(medLost.ys[x]) ? f.lost[i] - medLost.ys[x] : NaN));
+	const rng = (vals, pad, sym) => {
+		const vs = vals.filter(Number.isFinite);
+		if (!vs.length) return [0, 1];
+		if (sym) {
+			const m = Math.max(...vs.map(Math.abs), 1) * 1.08;
+			return [-m, m];
+		}
+		const lo = Math.min(...vs);
+		const hi = Math.max(...vs);
+		const p = (hi - lo) * pad || 1;
+		return [lo - p, hi + p];
+	};
+	const ranges = {
+		speed: rng([...f.speed, ...(medSpeed ? medSpeed.ys : []), ...(b ? b.speed : [])], 0.05),
+		turn: rng([...f.turn, ...f.opt.map((o) => o * 1.15)], 0, true),
+		vsmed: rng([...vsmed, 0], 0.1, true)
+	};
+	const lanes = [];
+	let top = 0;
+	for (const l of FOCUS_LANES) {
+		const t = top;
+		const [lo, hi] = ranges[l.id] || [0, 1];
+		lanes.push({ ...l, top: t, lo, hi, Y: (v) => t + 4 + (1 - (v - lo) / (hi - lo)) * (l.h - 8) });
+		top += l.h + LANE_GAP;
+	}
+	focusGeom = { X, lanes, maxX, f, vsmed, medSpeed, b };
+	g.font = '12px system-ui';
+	const plotW = w - GUTTER - 12;
+	const allBot = top - LANE_GAP;
+	for (const l of lanes) {
+		g.fillStyle = '#232733';
+		g.fillRect(GUTTER, l.top, plotW, l.h);
+		g.fillStyle = '#ff5c5c22';
+		for (const m of f.mistakes) g.fillRect(X(m.x0) - 1, l.top, Math.max(X(m.x1) - X(m.x0), 0) + 2, l.h);
+		g.strokeStyle = '#4a5468';
+		g.lineWidth = 1;
+		g.strokeRect(GUTTER + 0.5, l.top + 0.5, plotW - 1, l.h - 1);
+		g.fillStyle = C.text;
+		g.textAlign = 'left';
+		g.fillText(l.title, 6, l.top + 16);
+		g.fillStyle = C.muted;
+		g.fillText(l.unit, 6, l.top + 31);
+		g.save();
+		g.beginPath();
+		g.rect(GUTTER, l.top, plotW, l.h);
+		g.clip();
+		if (l.id !== 'keys') {
+			g.textAlign = 'right';
+			const step = niceStep(l.hi - l.lo, l.h, 26);
+			for (let v = Math.ceil(l.lo / step) * step; v <= l.hi; v += step) {
+				g.strokeStyle = v === 0 ? '#5a6478' : C.grid;
+				g.beginPath();
+				g.moveTo(GUTTER, l.Y(v));
+				g.lineTo(w - 12, l.Y(v));
+				g.stroke();
+			}
+		}
+		if (l.id === 'speed') {
+			if (b) polyline(g, b.xs, b.speed, X, l.Y, C.best, 1.6);
+			if (medSpeed) polyline(g, medSpeed.xs, medSpeed.ys, X, l.Y, C.med, 1.5, [5, 4]);
+			polyline(g, f.xs, f.speed, X, l.Y, C.last, 2.4);
+		} else if (l.id === 'turn') {
+			// optimal turn for this attempt's speed, both directions, with the 85-115 % band
+			g.fillStyle = '#7bd88f22';
+			for (let i = 0; i < f.xs.length; i++) {
+				const o = f.opt[i];
+				if (!Number.isFinite(o) || !f.want[i]) continue;
+				const sgn = f.want[i];
+				const y1 = l.Y(sgn * o * 0.85);
+				const y2 = l.Y(sgn * o * 1.15);
+				g.fillRect(X(f.xs[i] - 0.5), Math.min(y1, y2), X(1) - X(0) + 0.5, Math.abs(y2 - y1));
+			}
+			polyline(g, f.xs, f.opt.map((o, i) => (f.want[i] ? f.want[i] * o : NaN)), X, l.Y, '#7bd88f', 1);
+			polyline(g, f.xs, f.turn, X, l.Y, '#c792ea', 2.2);
+		} else if (l.id === 'keys') {
+			const rowH = (l.h - 12) / 2;
+			const cw = X(1) - X(0);
+			const colr = { 1: '#4fd1c5', '-1': '#ffb454' };
+			for (let i = 0; i < f.xs.length; i++) {
+				const x = X(f.xs[i] - 0.5);
+				if (f.want[i]) {
+					g.fillStyle = colr[f.want[i]];
+					g.fillRect(x, l.top + 4, cw + 0.5, rowH);
+				}
+				if (f.keys[i]) {
+					g.fillStyle = f.want[i] && f.keys[i] !== f.want[i] && !f.btn[i] ? C.bad : colr[f.keys[i]];
+					g.fillRect(x, l.top + 8 + rowH, cw + 0.5, rowH);
+				} else if (f.want[i] && !f.btn[i]) {
+					g.fillStyle = '#ff5c5c66';
+					g.fillRect(x, l.top + 8 + rowH, cw + 0.5, rowH);
+				}
+			}
+		} else if (l.id === 'vsmed') {
+			polyline(g, f.xs, vsmed, X, l.Y, C.bad, 2);
+		}
+		g.restore();
+		if (l.id !== 'keys') {
+			g.fillStyle = C.muted;
+			g.textAlign = 'right';
+			const step = niceStep(l.hi - l.lo, l.h, 26);
+			for (let v = Math.ceil(l.lo / step) * step; v <= l.hi; v += step) if (l.Y(v) > l.top + 8) g.fillText(`${+v.toFixed(1)}`, GUTTER - 6, l.Y(v) + 4);
+		}
+	}
+	// strafe boundaries with labels on top of the speed lane
+	g.textAlign = 'left';
+	for (const s of f.strafes) {
+		g.strokeStyle = '#ffffff40';
+		g.setLineDash([3, 3]);
+		g.beginPath();
+		g.moveTo(X(s.x0 - 0.5), 0);
+		g.lineTo(X(s.x0 - 0.5), allBot);
+		g.stroke();
+		g.setLineDash([]);
+		g.fillStyle = C.text;
+		g.fillText(`S${s.num} ${s.dir > 0 ? 'L' : 'R'}`, X(s.x0) + 3, 14);
+	}
+	g.fillStyle = C.muted;
+	g.textAlign = 'center';
+	const step = niceStep(maxX, plotW, 50);
+	for (let x = 0; x <= maxX; x += step) g.fillText(`${x}`, X(x), top + 14);
+	g.textAlign = 'left';
+	g.fillText('ticks', 6, top + 14);
+}
+
+function focusRead(ev) {
+	if (!focusGeom) return '';
+	const { X, maxX, f, vsmed, medSpeed, b } = focusGeom;
+	const r = $('focus-cv').getBoundingClientRect();
+	const mx = ev.clientX - r.left;
+	if (mx < GUTTER) return '';
+	const x = Math.round(((mx - GUTTER) / (r.width - GUTTER - 12)) * maxX);
+	const i = f.xs.indexOf(x);
+	if (i < 0) return `tick ${x}`;
+	const parts = [`tick ${x}`, `speed ${f.speed[i].toFixed(1)}`];
+	if (medSpeed && Number.isFinite(medSpeed.ys[x])) parts.push(`usual ${medSpeed.ys[x].toFixed(1)}`);
+	if (b) {
+		const k = b.xs.indexOf(x);
+		if (k >= 0) parts.push(`best ${b.speed[k].toFixed(1)}`);
+	}
+	parts.push(`turn ${Number.isFinite(f.turn[i]) ? f.turn[i].toFixed(2) : '–'}°`);
+	if (Number.isFinite(f.opt[i])) parts.push(`optimal ${f.opt[i].toFixed(2)}°`);
+	parts.push(`need ${KEY_NAME[f.want[i]] || '–'} held ${KEY_NAME[f.keys[i]] || 'none'}${f.btn[i] ? ' +left/right' : ''}`);
+	if (Number.isFinite(vsmed[i])) parts.push(`lost vs usual ${vsmed[i] >= 0 ? '+' : ''}${vsmed[i].toFixed(1)}`);
+	const m = f.mistakes.find((mm) => x >= mm.x0 && x <= mm.x1);
+	if (m) parts.push(`⚠ ${m.name}`);
+	return parts.join(' · ');
+}
+
 // ---------- events ----------
+
+$('focus-cv').addEventListener('mousemove', (ev) => ($('focus-read').textContent = focusRead(ev)));
+$('focus-cv').addEventListener('mouseleave', () => ($('focus-read').textContent = ''));
+$('focus-latest').onclick = () => setFocus(null);
+$('focus-open').onclick = () => {
+	const f = focused();
+	if (f) openMain(f);
+};
 
 $('trend').addEventListener('mousemove', (ev) => {
 	const e = trendAt(ev);
@@ -605,7 +1026,7 @@ $('trend').addEventListener('mousemove', (ev) => {
 $('trend').addEventListener('mouseleave', () => setHover(null));
 $('trend').addEventListener('click', (ev) => {
 	const e = trendAt(ev);
-	if (e) openMain(e);
+	if (e && e.h.label !== 'replay') setFocus(e.k);
 });
 $('stack').addEventListener('mousemove', (ev) => {
 	const got = stackAt(ev);
@@ -619,7 +1040,10 @@ $('stack').addEventListener('mouseleave', () => {
 });
 $('stack').addEventListener('click', (ev) => {
 	const got = stackAt(ev);
-	if (got) openMain(got.e);
+	if (got) {
+		if (got.e.h.label === 'replay') openMain(got.e);
+		else setFocus(got.e.k);
+	}
 });
 $('map').onchange = () => {
 	followLatest = false;
@@ -627,6 +1051,7 @@ $('map').onchange = () => {
 };
 $('scope').onchange = render;
 new ResizeObserver(() => {
+	drawFocus();
 	drawTrend();
 	drawStack();
 }).observe($('drill-main'));
@@ -639,6 +1064,7 @@ function live() {
 	src.addEventListener('attempt', async (ev) => {
 		const { dir, id } = JSON.parse(ev.data);
 		fresh.add(`${dir}/${id}`);
+		focusKey = null; // practice loop: a new attempt takes the focus
 		// Older entries keep the weak-takeoff verdict from when they were loaded; one more attempt in
 		// the baseline median barely moves it, and refetching every attempt would slow the update.
 		await loadList();

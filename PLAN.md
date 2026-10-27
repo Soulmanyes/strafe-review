@@ -232,6 +232,20 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - Stacked lanes, aligned on takeoff: speed, turn speed (5-tick average, signed) and lost so far (running sum of ideal - gain over rows at 100+ u/s with no collision). All attempts are faint; best is green, latest blue, the tick-by-tick median white dashed and replays orange dashed.
   - Side-by-side cards, newest first: speed and turn speed minis on a shared scale, takeoff to landing, gain %, ticks and the biggest jump-1 mistake. A card that arrived live flashes once.
   - Hovering a card, dot or line picks that attempt out everywhere. Clicking opens `/#<map>/<id>/j1`, which the main page opens zoomed to jump 1.
+- **Focus panel (added the same day, owner: "no easy way to see what I did wrong in the exact last jump").** It sits at the top and shows the latest attempt's jump 1. It moves to each new attempt as it arrives. Clicking a card, dot or stacked line focuses that attempt instead, with "Back to latest" and "Open in main view" buttons.
+  - "Usual" = the median over the other landed own attempts shown, per strafe index (strafe 1, 2, 3...).
+  - Per-strafe table:
+    - Columns: ticks, gain %, lost u/s, angle (median `yawRatio`, 2 ticks skipped at each end, `+left`/`+right` ticks left out), key held % and switch offset from the reversal (aim -1).
+    - Each value has your usual next to it in grey.
+    - Values turn red only in a strafe that lost 3+ u/s more than usual, because a different angle that cost nothing is not a mistake.
+  - Tips, biggest loss first:
+    - The strafe that lost the most over its usual, with plain reasons: turned slower or faster (angle off by 0.12 or more), matching key held 10+ points less, switch at -3 or earlier or at +1 or later, 8+ ticks shorter, `+left` held.
+    - Air runs of 8+ ticks with no turn after the first strafe ("keep strafing until you land").
+    - The top check that fired, with a one-line fix.
+  - Focus chart:
+    - Lanes: speed (this jump, usual, best), turn speed with this jump's optimal turn and its 85-115 % band, keys (needed key vs held, red when wrong or none) and lost vs usual (up = worse).
+    - Strafe starts are dashed lines, and check ranges are shaded red. Hover shows every value at a tick.
+- **Replays recorded twice.** Momentum replays open with the end of the player's previous run and a reset: 940-958 u/s, then a teleport to 0, inside the 2 s kept before the timer starts. `findJumps` already skips it. A replay that starts over after its end is recorded again until it is stopped: player D gave a second 4-row attempt ending as `replaced`. The drill page keeps only the longest recording per `replayFile`, and only replays whose jump 1 landed.
 - **Known limit.** Attempts already loaded keep the weak-takeoff verdict from load time while new attempts come in. Reload the page to redo it.
 
 ### Comparison

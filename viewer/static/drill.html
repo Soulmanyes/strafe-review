@@ -19,21 +19,33 @@
 	<span class="hint">A session is own attempts with under 30 min between them. Replays are never counted in the stats.</span>
 </header>
 <main id="drill-main">
+	<section id="focus">
+		<div class="sec-head">
+			<h2 id="focus-title">Last jump 1</h2>
+			<span class="muted">against your usual (the other landed attempts shown) · follows each new attempt · click a card below to look at an older one</span>
+			<button id="focus-latest" hidden>Back to latest</button>
+			<button id="focus-open" hidden>Open in main view</button>
+		</div>
+		<div id="focus-body"></div>
+		<div id="focus-read" class="readout"></div>
+		<div class="chart" id="focus-box"><canvas id="focus-cv"></canvas></div>
+		<div class="muted small">Speed: <span class="sw last"></span>this jump <span class="sw med"></span>usual <span class="sw best"></span>best · Turn speed: purple = yours, green band = optimal ±15 % · Keys: top row = key the turn needs, bottom = key held (red = wrong or none) · red shading = a check fired · dashed lines = strafe starts</div>
+	</section>
 	<section id="stats"></section>
 	<section>
-		<div class="sec-head"><h2>Landing speed per attempt</h2><span class="muted">oldest left · dot colour = gain % (red 60, green 95) · click a dot to open it</span></div>
+		<div class="sec-head"><h2>Landing speed per attempt</h2><span class="muted">oldest left · dot colour = gain % (red 60, green 95) · click a dot to look at it at the top</span></div>
 		<div class="chart" id="trend-box"><canvas id="trend"></canvas></div>
 	</section>
 	<section>
 		<div class="sec-head">
 			<h2>Stacked</h2>
-			<span class="muted">ticks from takeoff · <span class="sw best"></span>best <span class="sw last"></span>latest <span class="sw med"></span>median <span class="sw rep"></span>replay · hover a line or card to pick it out, click to open</span>
+			<span class="muted">ticks from takeoff · <span class="sw best"></span>best <span class="sw last"></span>latest <span class="sw med"></span>median <span class="sw rep"></span>replay · hover a line or card to pick it out, click to look at it at the top</span>
 		</div>
 		<div id="stack-read" class="readout"></div>
 		<div class="chart" id="stack-box"><canvas id="stack"></canvas></div>
 	</section>
 	<section>
-		<div class="sec-head"><h2>Side by side</h2><span class="muted">newest first · click to open jump 1 in the main view</span></div>
+		<div class="sec-head"><h2>Side by side</h2><span class="muted">newest first · click one to look at it in the panel at the top</span></div>
 		<div id="cards"></div>
 	</section>
 </main>
