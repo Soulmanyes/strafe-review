@@ -192,19 +192,26 @@ Each check can be switched on or off in the viewer settings. Thresholds start as
 - **Weak takeoff baseline.** `server.py` adds `j1Takeoff` to each list entry (a Python copy of `findJumps`; matches the JS on all 15 own attempts). The page takes the median of the other own attempts on the same map and tick interval.
 - **Settings** are saved in `localStorage` as only the values that differ from the defaults, so changed defaults still reach the owner.
 - **Defaults** (set from the 15 own attempts, 2026-10-27; one more than above):
-  - Early reversal: first strafe under 18 ticks. It's counted from where that turn began, which in a bhop is usually before the landing; counted from takeoff it flagged most later jumps. Jump 1's first strafe was 21-34 ticks; later jumps 5 %: 27.
+  - Early reversal: first strafe under 18 ticks (jump 1 only since tuning round 1). It's counted from where that turn began, which in a bhop is usually before the landing; counted from takeoff it flagged most later jumps. Jump 1's first strafe was 21-34 ticks; later jumps 5 %: 27.
   - Late first strafe: first correct key more than 3 ticks after takeoff.
   - Weak takeoff: 8+ u/s under the median, with 5+ other attempts.
-  - Too wide: strafe-middle median `yawRatio` over 1.1 (strafe medians: 95 % at 1.11). Too narrow: under 0.4 (10 % at 0.38). 3 ticks skipped at each end, 8+ tick strafes, one entry per strafe.
+  - Too wide: strafe-middle median `yawRatio` over 1.1 (strafe medians: 95 % at 1.11; 1.2 since tuning round 1). Too narrow: under 0.4 (10 % at 0.38). 3 ticks skipped at each end, 8+ tick strafes, one entry per strafe.
   - Uneven: (90th - 10th percentile) / median of the 5-tick average turn speed over the strafe middle, over 0.9 (95 % at 0.95). Raw per-tick yaw is too jumpy for this.
   - Imbalance: left vs right gain % differ by over 12 points, 4+ strafes per side; one entry per run.
-  - Wrong key / no key: 2+ ticks in a row, not within 4 ticks of a reversal (those are the switch check's).
+  - Wrong key / no key: 2+ ticks in a row (no key 3+ since tuning round 1), not within 4 ticks of a reversal (those are the switch check's).
   - Switch: offset of the nearest key switch (within 8 ticks) from the reversal; flagged at 4+ ticks early or 2+ late.
   - W held in air: off; 5+ air ticks with W.
 - **Re-measured with this split** (15 own attempts): switch offsets -7: 1, -6: 1, -5: 4, -4: 5, -3: 8, -2: 30, -1: 39, 0: 46, 1: 20, 2: 4, 3: 7, 4: 3, 7: 1 (169); middle strafes median 31 (5-95 %: 20-49). The earlier 132-switch figure came from a different split.
 - **Replays skip key timing** (late first strafe, wrong key, no key, switch): the WR replay's switches all sat 3-7 ticks before the turn (own runs centre on -1), so its keys run ahead of its view angles. Before this, the replay listed 57 mistakes. The list now scrolls in its own 360 px box.
 - **Too narrow at 0.00** means the yaw stopped in the middle of a strafe (keys held on 25-57 % of those ticks, gain 4-10 of 35-44 u/s ideal). The entry then says "barely turning".
 - **First counts** with everything on (16 attempts incl. 1 replay): early 5, late first 11, takeoff 3, wide 12, narrow 18, uneven 8, imbalance 1, wrong key 15 (13 in the replay, whose keys seem to lag the turn), no key 9, switch 54 (36 in the replay). Jump 1 of own runs: 4 switch entries (switched 4-6 ticks early on the first reversal after the `+left` prestrafe).
+- **Tuning round 1 (2026-10-27, owner's picks).** New data: 15 jump-1 drills, 2 finished runs and 3 top replays (player A, player B, player C). Changes:
+  - Too wide: 1.1 to 1.2. Top replays sat at 1.10-1.17 (3-6 per run); the owner's real outliers read 1.33-1.37.
+  - Early reversal: jump 1 only. Top replays reverse after 10-17 ticks on later, faster jumps (player C: 6 hits).
+  - No key: 3+ ticks. The 2-tick hits were blips on drill jump 2, about 2 u/s each.
+  - Weak takeoff: a jump-1 takeoff under 150 u/s (`MIN_TAKEOFF`) is neither judged nor counted in the median. It fired on a reset before jumping (34 u/s) and a replay fragment (0 u/s).
+  - Counts on 53 attempts: early 18 to 1, wide 42 to 9, no key 26 to 9, takeoff 10 to 8.
+  - Kept: the jump-1 switch "D 4-5 ticks before the reversal" after the `+left` prestrafe fires on 7 of 11 drills at 5.6-7 u/s each. The owner can't feel it, so it stays flagged as the main thing to practise.
 
 - **Early reversal:** the first strafe after takeoff is too short, so you switched the other way too soon after the prestrafe.
 - **Late first strafe:** ticks between takeoff and the first air strafe.

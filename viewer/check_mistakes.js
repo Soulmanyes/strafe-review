@@ -13,7 +13,7 @@ const zlib = require('zlib');
 
 const data = require('./static/data.js');
 Object.assign(globalThis, data);
-const { CHECKS, runChecks, strafesOf, switchesOf, turnStart, median } = require('./static/checks.js');
+const { CHECKS, MIN_TAKEOFF, runChecks, strafesOf, switchesOf, turnStart, median } = require('./static/checks.js');
 
 const args = process.argv.slice(2);
 const at = args.indexOf('--store');
@@ -45,7 +45,7 @@ const loaded = files.map((f) => {
 const takeoffs = {};
 for (const { a, jumps } of loaded) {
 	const j1 = jumps.find((j) => j.num === 1);
-	if (a.label === 'replay' || !j1) continue;
+	if (a.label === 'replay' || !j1 || j1.takeoff < MIN_TAKEOFF) continue;
 	(takeoffs[`${a.map}@${a.interval}`] ||= []).push({ id: a.id, v: +j1.takeoff.toFixed(2) });
 }
 

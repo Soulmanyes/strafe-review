@@ -63,7 +63,7 @@ function loadSettings() {
 // Same baseline as the main page: median jump-1 takeoff of the other own attempts on this map and tickrate
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && Number.isFinite(a.j1Takeoff))
+		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }

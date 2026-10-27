@@ -10,15 +10,15 @@
 
 // Defaults come from the owner's 14 own attempts on bhop_ambience (PLAN.md "Mistake checks").
 const CHECKS = [
-	{ id: 'early', name: 'Early reversal', on: true, help: 'The strafe you take off with is reversed sooner than this (counted from where that turn began).', params: { minTicks: { label: 'shortest first strafe (ticks)', v: 18 } } },
+	{ id: 'early', name: 'Early reversal', on: true, help: 'Jump 1 only: the strafe you take off with is reversed sooner than this (counted from where that turn began).', params: { minTicks: { label: 'shortest first strafe (ticks)', v: 18 } } },
 	{ id: 'lateFirst', name: 'Late first strafe', on: true, help: 'Ticks from takeoff to the first correct key while turning.', params: { maxTicks: { label: 'most ticks allowed', v: 3 } } },
 	{ id: 'takeoff', name: 'Weak takeoff', on: true, help: 'Jump-1 takeoff speed below the median of your own attempts on this map.', params: { below: { label: 'u/s below your median', v: 8 }, minRuns: { label: 'attempts needed for a median', v: 5 } } },
-	{ id: 'wide', name: 'Too wide / too fast', on: true, help: "Median angle (yawRatio) over a strafe's middle, its first and last ticks skipped.", params: { ratio: { label: 'median yawRatio above', v: 1.1 }, skip: { label: 'ticks skipped at each end', v: 3 } } },
+	{ id: 'wide', name: 'Too wide / too fast', on: true, help: "Median angle (yawRatio) over a strafe's middle, its first and last ticks skipped.", params: { ratio: { label: 'median yawRatio above', v: 1.2 }, skip: { label: 'ticks skipped at each end', v: 3 } } },
 	{ id: 'narrow', name: 'Too narrow / too slow', on: true, help: "Median angle (yawRatio) over a strafe's middle, its first and last ticks skipped.", params: { ratio: { label: 'median yawRatio below', v: 0.4 }, skip: { label: 'ticks skipped at each end', v: 3 } } },
 	{ id: 'uneven', name: 'Uneven turn speed', on: true, help: "Spread of the 5-tick average turn speed over a strafe's middle: (90th - 10th percentile) / median.", params: { spread: { label: 'spread above', v: 0.9 }, skip: { label: 'ticks skipped at each end', v: 3 } } },
 	{ id: 'balance', name: 'Left/right imbalance', on: true, help: 'Gain % of left strafes vs right strafes over the whole run.', params: { points: { label: 'difference above (% points)', v: 12 }, minStrafes: { label: 'strafes needed per side', v: 4 } } },
 	{ id: 'wrongKey', name: 'Wrong key', on: true, help: 'Turning one way while only the other strafe key is held, away from a switch.', params: { minTicks: { label: 'ticks in a row', v: 2 } } },
-	{ id: 'noKey', name: 'No key while turning', on: true, help: 'Turning with neither A nor D held, away from a switch.', params: { minTicks: { label: 'ticks in a row', v: 2 } } },
+	{ id: 'noKey', name: 'No key while turning', on: true, help: 'Turning with neither A nor D held, away from a switch.', params: { minTicks: { label: 'ticks in a row', v: 3 } } },
 	{ id: 'switch', name: 'Early/late switch', on: true, help: 'Key switch offset from the turn reversal. Target -1 (one tick before).', params: { early: { label: 'early from (ticks before reversal)', v: 4 }, late: { label: 'late from (ticks after reversal)', v: 2 } } },
 	{ id: 'wAir', name: 'W held in air', on: false, help: 'Off by default: many jump binds release W on their own.', params: { minTicks: { label: 'air ticks with W', v: 5 } } }
 ];
@@ -26,6 +26,9 @@ const CHECKS = [
 // own runs centre on -1), so key timing in a replay says nothing about the player. Skipped there.
 const REPLAY_SKIP = ['lateFirst', 'wrongKey', 'noKey', 'switch'];
 const SWITCH_WINDOW = 8; // a key switch further than this from a reversal belongs to no reversal
+// A jump-1 takeoff slower than this wasn't a real jump (a reset before jumping read 34 u/s, a replay
+// fragment 0), so it is neither judged nor counted in the median
+const MIN_TAKEOFF = 150;
 
 function median(vs) {
 	if (!vs.length) return NaN;
@@ -171,10 +174,10 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 		const tag = `Jump ${j.num}`;
 
 		// Early reversal: the strafe in progress at takeoff, or the first one after it. It's counted from
-		// where that turn began, which in a bhop is often before the landing, so later jumps aren't flagged
-		// for a strafe carried over the ground tick.
+		// where that turn began, which in a bhop is often before the landing. Jump 1 only: on later, faster
+		// jumps top replays reverse after 10-17 ticks, so a short first strafe there is normal.
 		const first = strafes[0];
-		if (cfg.early.on && first && strafes.length > 1 && !first.gap) {
+		if (cfg.early.on && j.num === 1 && first && strafes.length > 1 && !first.gap) {
 			const from = turnStart(d, s, first.dir);
 			const len = d.tick[first.i1] - d.tick[from] + 1;
 			if (len < cfg.early.minTicks) add('early', j, s, first.i1, `${tag}: first strafe ${len} ticks, then reversed (min ${cfg.early.minTicks})`);
@@ -273,7 +276,7 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 
 	// Weak takeoff: jump 1 against the own-attempt median on this map and tickrate
 	const j1 = jumps.find((j) => j.num === 1);
-	if (cfg.takeoff.on && j1 && baseline && baseline.takeoffRuns >= cfg.takeoff.minRuns) {
+	if (cfg.takeoff.on && j1 && j1.takeoff >= MIN_TAKEOFF && baseline && baseline.takeoffRuns >= cfg.takeoff.minRuns) {
 		const short = baseline.takeoffMedian - j1.takeoff;
 		if (short > cfg.takeoff.below)
 			add('takeoff', j1, j1.s, j1.s, `Jump 1: takeoff ${j1.takeoff.toFixed(0)} u/s, your median ${baseline.takeoffMedian.toFixed(0)} (${baseline.takeoffRuns} attempts)`, short);
@@ -283,4 +286,4 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 	return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { CHECKS, REPLAY_SKIP, runChecks, strafesOf, switchesOf, turnStart, keyDir, median };
+if (typeof module !== 'undefined') module.exports = { CHECKS, REPLAY_SKIP, MIN_TAKEOFF, runChecks, strafesOf, switchesOf, turnStart, keyDir, median };
