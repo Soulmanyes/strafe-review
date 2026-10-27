@@ -692,7 +692,7 @@ function workOutLine(a: Attempt) {
 	return true;
 }
 
-// Scans new rows for a landing (vz from falling to exactly 0); works the line out a few rows later
+// Scans new rows for a landing (vz from falling to exactly 0, or a takeoff); works the line out a few rows later
 function lineStep() {
 	const a = attempt;
 	if (!a || a.line.done) return;
@@ -701,7 +701,8 @@ function lineStep() {
 		if (st.seen === 0 || st.at >= 0) continue;
 		const vz = Number(a.rows[st.seen].split(',')[7]);
 		const prev = Number(a.rows[st.seen - 1].split(',')[7]);
-		if (vz === 0 && prev < 0) st.at = st.seen + 1 + LINE_DELAY_ROWS;
+		// A missed landing tick goes straight from falling to the next takeoff, which also ends a jump in findJumps
+		if ((vz === 0 && prev < 0) || (vz > 100 && prev <= 0.5)) st.at = st.seen + 1 + LINE_DELAY_ROWS;
 	}
 	if (st.at >= 0 && a.rows.length >= st.at) {
 		st.done = workOutLine(a); // false: keep scanning for the next landing
