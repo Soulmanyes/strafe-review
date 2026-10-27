@@ -649,8 +649,9 @@ function showLine(text: string) {
 		const ctx = $.GetContextPanel();
 		const root = ctx.GetParent() ?? ctx;
 		lineLabel = (root.FindChildTraverse('StrafeReviewLine') as Label | null) ?? $.CreatePanel('Label', root, 'StrafeReviewLine', {
-			style: `horizontal-align: center; y: 64%; font-size: 22px; font-weight: bold; color: #ffffff;
-				text-shadow: 0px 0px 4px 2px #000000e0;`
+			// Panorama px are 1080p units, so 150px below the centre stays put at any resolution
+			style: `horizontal-align: center; vertical-align: center; margin-top: 150px; font-size: 22px;
+				font-weight: bold; color: #ffffff; text-shadow: 0px 1px 4px 2px rgba(0, 0, 0, 0.9);`
 		});
 	}
 	lineLabel.text = text;
