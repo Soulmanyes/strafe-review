@@ -66,7 +66,7 @@ function loadSettings() {
 // Same baseline as the main page: median jump-1 takeoff of the other own attempts on this map and tickrate
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
@@ -104,7 +104,7 @@ async function entry(h) {
 			if (Number.isFinite(l) && d.speed[i] > 100 && !(d.gain[i] < -10)) sum += l;
 			lost.push(sum);
 		}
-		const mistakes = runChecks(d, jumps, endIdx, loadSettings(), takeoffBaseline(h), h.label === 'replay')
+		const mistakes = runChecks(d, jumps, endIdx, loadSettings(), takeoffBaseline(h), isOther(h))
 			.filter((m) => m.jump === 1)
 			.map((m) => ({ ...m, x0: d.x[m.i0] - t0, x1: d.x[m.i1] - t0 }));
 		const keys = [];
@@ -194,12 +194,12 @@ function pick() {
 	const mk = $('map').value;
 	const tag = $('tag').value;
 	const own = list
-		.filter((h) => mapKey(h) === mk && h.label !== 'replay' && (!tag || allTags(h).includes(tag)))
+		.filter((h) => mapKey(h) === mk && !isOther(h) && (!tag || allTags(h).includes(tag)))
 		.sort((a, b) => a.started - b.started);
 	// A replay that starts over is recorded again (a few ticks before it was stopped): keep the
 	// longest recording of each replay file
 	const byFile = new Map();
-	for (const h of list.filter((x) => mapKey(x) === mk && x.label === 'replay')) {
+	for (const h of list.filter((x) => mapKey(x) === mk && isOther(x))) {
 		const f = h.replayFile || h.id;
 		if (!byFile.has(f) || h.rowCount > byFile.get(f).rowCount) byFile.set(f, h);
 	}
@@ -234,7 +234,7 @@ function fillTags() {
 	const sel = $('tag');
 	const want = sel.value || localStorage.getItem(TAG_KEY) || '';
 	const mk = $('map').value;
-	const tags = [...new Set(list.filter((h) => mapKey(h) === mk && h.label !== 'replay').flatMap(allTags))].sort((a, b) => a.localeCompare(b));
+	const tags = [...new Set(list.filter((h) => mapKey(h) === mk && !isOther(h)).flatMap(allTags))].sort((a, b) => a.localeCompare(b));
 	sel.replaceChildren(new Option('All', ''), ...tags.map((t) => new Option(t, t)));
 	sel.value = tags.includes(want) ? want : '';
 	sel.disabled = !tags.length;
@@ -344,7 +344,7 @@ function showStats() {
 	for (const r of shown.replays) {
 		const n = document.createElement('div');
 		n.className = 'muted';
-		n.textContent = `Reference: Replay: ${r.h.player || 'unknown player'}, landing ${r.land.toFixed(1)} u/s, gain ${r.pct.toFixed(2)} % (not counted)`;
+		n.textContent = `Reference: ${whoseRun(r.h)}, landing ${r.land.toFixed(1)} u/s, gain ${r.pct.toFixed(2)} % (not counted)`;
 		box.append(n);
 	}
 }
@@ -606,7 +606,7 @@ function stackAt(ev) {
 }
 
 function label(e) {
-	return e.h.label === 'replay' ? `Replay: ${e.h.player || 'unknown player'}` : `${when(e.h.started)}`;
+	return isOther(e.h) ? whoseRun(e.h) : `${when(e.h.started)}`;
 }
 
 // ---------- cards ----------
@@ -627,7 +627,7 @@ function mini(cv, e, maxX, ranges) {
 	g.moveTo(0, tY(0));
 	g.lineTo(w, tY(0));
 	g.stroke();
-	polyline(g, e.xs, e.speed, X, sY, e.h.label === 'replay' ? C.rep : C.text, 1.6);
+	polyline(g, e.xs, e.speed, X, sY, isOther(e.h) ? C.rep : C.text, 1.6);
 	polyline(g, e.xs, e.turn, X, tY, '#c792ea', 1.3);
 }
 
@@ -1060,7 +1060,7 @@ $('trend').addEventListener('mousemove', (ev) => {
 $('trend').addEventListener('mouseleave', () => setHover(null));
 $('trend').addEventListener('click', (ev) => {
 	const e = trendAt(ev);
-	if (e && e.h.label !== 'replay') setFocus(e.k);
+	if (e && !isOther(e.h)) setFocus(e.k);
 });
 $('stack').addEventListener('mousemove', (ev) => {
 	const got = stackAt(ev);
@@ -1075,7 +1075,7 @@ $('stack').addEventListener('mouseleave', () => {
 $('stack').addEventListener('click', (ev) => {
 	const got = stackAt(ev);
 	if (got) {
-		if (got.e.h.label === 'replay') openMain(got.e);
+		if (isOther(got.e.h)) openMain(got.e);
 		else setFocus(got.e.k);
 	}
 });
@@ -1113,7 +1113,7 @@ function live() {
 
 // cm per 360° at the newest own attempt's sens, to check against Momentum's own mouse settings page
 function showCm360() {
-	const h = list.find((a) => a.label !== 'replay');
+	const h = list.find((a) => !isOther(a));
 	const m = mouseFor(h, mouseNow, dpi);
 	$('cm360').textContent = m ? `${(360 * m.cmPerDeg).toFixed(1)} cm/360° at sens ${m.sens}` : '';
 }

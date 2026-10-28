@@ -9,6 +9,20 @@ function wrap180(a) {
 	return ((((a + 180) % 360) + 360) % 360) - 180;
 }
 
+// Fewest air rows before an 'own' attempt with no tick stats is taken for a spectated one
+const SPECTATE_MIN_AIR = 20;
+
+// Someone else's recording: a replay ('replay') or a live player spectated ('spectate')
+function isOther(h) {
+	return h.label !== 'own';
+}
+
+function whoseRun(h) {
+	if (h.label === 'replay') return `Replay: ${h.player || 'unknown player'}`;
+	if (h.label === 'spectate') return `Spectated: ${h.player || 'unknown player'}`;
+	return 'Own run';
+}
+
 function parse(a) {
 	const ix = {};
 	a.cols.forEach((c, i) => (ix[c] = i));
@@ -41,6 +55,8 @@ function parse(a) {
 	// Replays carry no tick stats (GetLastTickStats() reads 0 while spectating). Own runs show
 	// gain = change in horizontal speed and ideal = sqrt(v^2 + 30^2) - v exactly, so both are rebuilt from speed.
 	d.derived = !d.ideal.some((v, i) => v !== 0 && !d.ground[i]);
+	// Recorders before the 'spectate' label saved a spectated live player as 'own' (same rule as the server's head())
+	if (d.derived && a.label === 'own' && d.ground.reduce((c, g) => c + (g ? 0 : 1), 0) >= SPECTATE_MIN_AIR) a.label = 'spectate';
 	if (d.derived) {
 		for (let i = 0; i < n; i++) {
 			const v = i > 0 ? d.speed[i - 1] : NaN;
@@ -196,4 +212,4 @@ function runEnd(a, d) {
 	return last;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest };
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest };

@@ -60,26 +60,26 @@ function when(ms) {
 }
 
 function isDrill(h) {
-	return h.label !== 'replay' && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
+	return !isOther(h) && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
 }
 
 // Same rule as the main page: a replay recording with no landed jump, or a shorter copy of a replay
 // file that was recorded again
 function isFragment(h) {
-	if (h.label !== 'replay') return false;
+	if (!isOther(h)) return false;
 	if (h.landed === 0) return true;
 	const fl = h.replayFile;
-	return !!fl && list.some((o) => o !== h && o.label === 'replay' && o.replayFile === fl && o.rowCount > h.rowCount);
+	return !!fl && list.some((o) => o !== h && isOther(o) && o.replayFile === fl && o.rowCount > h.rowCount);
 }
 
 function labelText(h) {
-	if (h.label === 'replay') return `Replay: ${h.player || 'unknown player'}`;
+	if (isOther(h)) return whoseRun(h);
 	return isDrill(h) ? `Drill · ${h.landed} jump${h.landed === 1 ? '' : 's'}` : 'Own run';
 }
 
 function labelChip(h) {
 	const el = document.createElement('span');
-	el.className = `chip ${h.label === 'replay' ? 'replay' : isDrill(h) ? 'drill' : 'own'}`;
+	el.className = `chip ${isOther(h) ? 'replay' : isDrill(h) ? 'drill' : 'own'}`;
 	el.textContent = labelText(h);
 	return el;
 }
@@ -102,7 +102,7 @@ function loadSettings() {
 // Same baseline as the main page: median jump-1 takeoff of the other own attempts on this map and tickrate
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
@@ -196,7 +196,7 @@ async function rec(h) {
 	const d = parse(a);
 	const { jumps } = findJumps(d, a.preRows);
 	const stats = summarize(a, d, jumps);
-	const replay = a.label === 'replay';
+	const replay = isOther(a);
 	// Weak takeoff compares with the owner's own median, which says nothing about someone else's replay
 	const mistakes = runChecks(d, jumps, stats.endIdx, loadSettings(), replay ? null : takeoffBaseline(a), replay);
 	const r = { head: a, d, jumps, stats, mistakes };
@@ -346,7 +346,7 @@ function showStats() {
 		{
 			name: 'Sync (keys vs turn)',
 			tip: 'Share of strafing ticks where A or D alone matches the turn side. +left/+right ticks are left out. Keys are shifted by the lag that matches best (replay keys run ahead of the angles). Not the game\'s own sync number.',
-			vals: S.map((s, i) => cell(`${f(s.sync, 1)} %`, `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${shown[i].head.label === 'replay' ? ' · approximate' : ''}`)),
+			vals: S.map((s, i) => cell(`${f(s.sync, 1)} %`, `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${isOther(shown[i].head) ? ' · approximate' : ''}`)),
 			nums: S.map((s) => s.sync),
 			best: 'max'
 		},
@@ -381,14 +381,14 @@ function showStats() {
 		{
 			name: 'Found',
 			tip: 'Mistake checks from the main page. Replays skip the key checks (their keys run ahead of the angles) and weak takeoff (it compares with your own median).',
-			vals: shown.map((r) => cell(String(r.mistakes.length), r.head.label === 'replay' ? 'key checks and weak takeoff not run' : '')),
-			nums: shown.map((r) => (r.head.label === 'replay' ? NaN : r.mistakes.length)),
+			vals: shown.map((r) => cell(String(r.mistakes.length), isOther(r.head) ? 'key checks and weak takeoff not run' : '')),
+			nums: shown.map((r) => (isOther(r.head) ? NaN : r.mistakes.length)),
 			best: 'min'
 		},
 		{
 			name: 'Speed lost to them',
 			vals: shown.map((r) => `${f(r.mistakes.reduce((a, m) => a + m.lost, 0), 1)} u/s`),
-			nums: shown.map((r) => (r.head.label === 'replay' ? NaN : r.mistakes.reduce((a, m) => a + m.lost, 0))),
+			nums: shown.map((r) => (isOther(r.head) ? NaN : r.mistakes.reduce((a, m) => a + m.lost, 0))),
 			best: 'min'
 		}
 	];
@@ -427,7 +427,7 @@ function showMistakes() {
 	for (const name of names) {
 		const cId = CHECKS.find((c) => c.name === name).id;
 		const per = shown.map((r) => r.mistakes.filter((m) => m.name === name));
-		const skipped = shown.map((r) => r.head.label === 'replay' && (REPLAY_SKIP.includes(cId) || cId === 'takeoff'));
+		const skipped = shown.map((r) => isOther(r.head) && (REPLAY_SKIP.includes(cId) || cId === 'takeoff'));
 		if (per.every((p) => !p.length) && !skipped.some(Boolean)) continue;
 		rows.push({
 			name,

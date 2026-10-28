@@ -141,7 +141,8 @@ if (args.includes('--log')) {
 		const a = load(f);
 		if (a.label !== 'own') continue;
 		const want = viewer(a);
-		if (!want) continue;
+		// parse() relabels old spectated recordings as 'spectate'
+		if (!want || a.label !== 'own') continue;
 		const got = work(id, a.rows.split(';'), a.preRows);
 		checked++;
 		if (!got) {

@@ -31,7 +31,7 @@ for (const m of fs.readdirSync(store)) {
 		const d = data.parse(a);
 		const { jumps } = data.findJumps(d, a.preRows);
 		const s = summarize(a, d, jumps);
-		const who = a.label === 'replay' ? `replay ${a.player}` : 'own';
+		const who = isOther(a) ? `${a.label} ${a.player}` : 'own';
 		console.log(
 			`${m} ${id} ${who.padEnd(20)} ${String(a.reason).padEnd(9)} gain ${f(s.gainPct)}% sync ${f(s.sync, 1)}% lag ${s.lag} angle ${f(s.angle)} ` +
 				`strafes/j ${f(s.strafesPerJump, 1)} turning ${f(s.turnPct, 1)}% landed ${s.landed}/${s.jumps} j1 ${s.j1 ? f(s.j1.pct) : '-'}% ` +

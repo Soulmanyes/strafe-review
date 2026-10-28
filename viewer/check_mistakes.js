@@ -45,7 +45,7 @@ const loaded = files.map((f) => {
 const takeoffs = {};
 for (const { a, jumps } of loaded) {
 	const j1 = jumps.find((j) => j.num === 1);
-	if (a.label === 'replay' || !j1 || j1.takeoff < MIN_TAKEOFF) continue;
+	if (isOther(a) || !j1 || j1.takeoff < MIN_TAKEOFF) continue;
 	(takeoffs[`${a.map}@${a.interval}`] ||= []).push({ id: a.id, v: +j1.takeoff.toFixed(2) });
 }
 
@@ -55,7 +55,7 @@ const offsets = {};
 const counts = Object.fromEntries(CHECKS.map((c) => [c.id, 0]));
 const allOn = Object.fromEntries(CHECKS.map((c) => [c.id, { on: true }]));
 for (const { a, d, jumps, endIdx } of loaded) {
-	const own = a.label !== 'replay';
+	const own = !isOther(a);
 	if (own) {
 		for (const j of jumps) {
 			if (!j.num || j.s > endIdx) continue;
@@ -83,7 +83,7 @@ for (const { a, d, jumps, endIdx } of loaded) {
 		per[m.check] = (per[m.check] || 0) + 1;
 	}
 	const rows = endIdx - (a.preRows || 0) + 1;
-	console.log(`${a.id} ${own ? 'own   ' : 'replay'} ${(a.reason || '?').padEnd(8)} ${String(rows).padStart(5)} rows  ` + Object.entries(per).map(([k, v]) => `${k} ${v}`).join(', '));
+	console.log(`${a.id} ${a.label.padEnd(8)} ${(a.reason || '?').padEnd(8)} ${String(rows).padStart(5)} rows  ` + Object.entries(per).map(([k, v]) => `${k} ${v}`).join(', '));
 	if (listAll) for (const m of found) console.log(`    ${m.lost.toFixed(1).padStart(6)} u/s  ${m.name}: ${m.text}`);
 }
 

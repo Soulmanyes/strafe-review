@@ -48,6 +48,7 @@ MAX_BODY = 16384
 MAX_NOTE = 2000
 MAX_TAG = 40
 MAX_TAGS = 20
+SPECTATE_MIN_AIR = 20  # same as static/data.js
 POLL = 0.5  # seconds between store scans for /api/events
 PING = 15  # seconds between keep-alive comments
 
@@ -89,6 +90,23 @@ def jump1_takeoff(data):
     return round(math.hypot(vx[j1[0]], vy[j1[0]]), 2), land, landed
 
 
+def spectated(data):
+    """True for an 'own' attempt that was really a live player being spectated: recorders before the
+    'spectate' label saved those as 'own'. Their air rows never carry tick stats (ideal reads 0), the
+    same rule parse() in static/data.js uses."""
+    cols = data.get("cols") or []
+    rows = data.get("rows") or ""
+    if data.get("label") != "own" or not rows or not all(c in cols for c in ("ideal", "vz")):
+        return False
+    ii, iz = cols.index("ideal"), cols.index("vz")
+    vals = [r.split(",") for r in rows.split(";")]
+    ideal = [float(v[ii]) for v in vals]
+    vz = [float(v[iz]) for v in vals]
+    n = len(vz)
+    air = [not (vz[i] == 0 and not ((vz[i - 1] if i else 0) > 0 and (vz[i + 1] if i < n - 1 else 0) < 0)) for i in range(n)]
+    return sum(air) >= SPECTATE_MIN_AIR and not any(ideal[i] != 0 for i in range(n) if air[i])
+
+
 def run_gaps(data):
     """Missed ticks inside the run, as runGaps() in static/data.js: from the timer start to the run
     end (runTime, else the last row before the post-end tail). A replay's pause at its end isn't counted."""
@@ -121,6 +139,8 @@ def head(path):
         data = json.load(f)
     data["j1Takeoff"], data["j1Land"], data["landed"] = jump1_takeoff(data)
     data["runGaps"] = run_gaps(data)
+    if spectated(data):
+        data["label"] = "spectate"
     rows = data.pop("rows", "")
     data["rowCount"] = rows.count(";") + 1 if rows else 0
     data["dir"] = path.parent.name

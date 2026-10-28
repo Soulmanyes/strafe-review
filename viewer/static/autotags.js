@@ -29,7 +29,7 @@ function saveAutoOpts(o) {
 // Sets h.auto (array of tag names) on every head in the list
 function autoTags(list, opts = loadAutoOpts()) {
 	for (const h of list) h.auto = [];
-	const own = list.filter((h) => h.label !== 'replay').sort((a, b) => a.started - b.started);
+	const own = list.filter((h) => !isOther(h)).sort((a, b) => a.started - b.started);
 
 	let dpi = null;
 	let cur = null; // the sens key in use

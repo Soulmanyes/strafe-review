@@ -16,6 +16,7 @@ const TIMER_PRIMED = 1;
 const TIMER_RUNNING = 2;
 const TIMER_FINISHED = 3;
 const REPLAY_NONE = 0;
+const MOVETYPE_OBSERVER = 10; // MomentumMovementAPI.MoveType.OBSERVER
 
 const PRESTART_SECONDS = 2;
 // Rows kept after a non-finish end. mom_restart_stage ends the timer as DISABLED, the same
@@ -77,6 +78,7 @@ let lastKey = '';
 let lastState = MomentumTimerAPI.GetObservedTimerStatus().state;
 const queue: string[] = [];
 const reported = new Set<string>();
+let spectating = false; // MomentumSpectateStart/Stop; GetMoveType() covers a panorama_reload mid-spectate
 
 function msg(text: string) {
 	$.Msg(`${TAG} ${text}`);
@@ -227,6 +229,8 @@ function startAttempt() {
 	const status = MomentumTimerAPI.GetObservedTimerStatus();
 	const meta = MomentumTimerAPI.GetObservedRunMetadata();
 	const replaying = MomentumReplayAPI.GetReplayState() !== REPLAY_NONE;
+	// Spectating a live player: the player API follows the target, tick stats read 0 like on replays
+	const spec = !replaying && !meta && (spectating || MomentumMovementAPI.GetMoveType() === MOVETYPE_OBSERVER);
 	const now = Date.now();
 	const id = `${now.toString(36)}${Math.floor(Math.random() * 1296)
 		.toString(36)
@@ -241,8 +245,8 @@ function startAttempt() {
 			interval,
 			style: status.style,
 			track: status.trackId,
-			label: replaying || meta ? 'replay' : 'own',
-			player: meta ? meta.playerName : null,
+			label: replaying || meta ? 'replay' : spec ? 'spectate' : 'own',
+			player: meta ? meta.playerName : spec ? specName() : null,
 			replayFile: meta ? meta.filePath : null,
 			practice: MomentumPlayerAPI.IsInPracticeMode(),
 			version: MomentumAPI.GetVersionInfo(),
@@ -254,8 +258,16 @@ function startAttempt() {
 		gaps: 0,
 		runTime: 0,
 		tail: null,
-		line: { done: replaying || !!meta, seen: 0, at: -1 }
+		line: { done: replaying || !!meta || spec, seen: 0, at: -1 }
 	};
+}
+
+// Name of the spectated player, from the built-in spectate HUD panel (#Spectator in hud.xml)
+function specName(): string | null {
+	let root = $.GetContextPanel();
+	while (root.GetParent()) root = root.GetParent()!;
+	const p = root.FindChildTraverse<MomHudSpectate>('Spectator');
+	return p && p.name ? p.name : null;
 }
 
 function endAttempt(reason: string) {
@@ -775,6 +787,8 @@ $.RegisterForUnhandledEvent('OnSaveStateUpdate', (count, current, usingMenu) =>
 $.RegisterForUnhandledEvent('OnJumpStarted', () => guard('jump', onJump));
 $.RegisterForUnhandledEvent('ObserverTargetChanged', () => guard('target', () => onTargetChange('target')));
 $.RegisterForUnhandledEvent('OnObservedTimerReplaced', () => guard('replaced', () => onTargetChange('replaced')));
+$.RegisterForUnhandledEvent('MomentumSpectateStart', () => (spectating = true));
+$.RegisterForUnhandledEvent('MomentumSpectateStop', () => (spectating = false));
 $.RegisterForUnhandledEvent('LevelInitPostEntity', () => guard('level', onLevelInit));
 
 guard('mouse', () => msg(`mouse ${JSON.stringify(mouse())}`));

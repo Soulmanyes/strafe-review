@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
+Object.assign(globalThis, require('./static/data.js'));
 const { autoTags } = require('./static/autotags.js');
 
 const args = process.argv.slice(2);

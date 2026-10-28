@@ -82,26 +82,26 @@ const DRILL_MAX_JUMPS = 7;
 
 
 function isDrill(h) {
-	return h.label !== 'replay' && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
+	return !isOther(h) && h.reason !== 'finish' && Number.isFinite(h.landed) && h.landed <= DRILL_MAX_JUMPS;
 }
 
 // A replay recording with no landed jump, or a shorter copy of a replay file recorded again (a replay
 // that starts over after its end is recorded until it is stopped). Never listed unless it is open.
 function isFragment(h) {
-	if (h.label !== 'replay') return false;
+	if (!isOther(h)) return false;
 	if (h.landed === 0) return true;
 	const f = h.replayFile;
-	return !!f && list.some((o) => o !== h && o.label === 'replay' && o.replayFile === f && o.rowCount > h.rowCount);
+	return !!f && list.some((o) => o !== h && isOther(o) && o.replayFile === f && o.rowCount > h.rowCount);
 }
 
 function labelText(h) {
-	return h.label === 'replay' ? `Replay: ${h.player || 'unknown player'}` : 'Own run';
+	return whoseRun(h);
 }
 
 function labelChip(h) {
 	const el = document.createElement('span');
 	const drill = isDrill(h);
-	el.className = `chip ${h.label === 'replay' ? 'replay' : drill ? 'drill' : 'own'}`;
+	el.className = `chip ${isOther(h) ? 'replay' : drill ? 'drill' : 'own'}`;
 	el.textContent = drill ? `Drill · ${h.landed} jump${h.landed === 1 ? '' : 's'}` : labelText(h);
 	return el;
 }
@@ -420,8 +420,8 @@ function candidates() {
 
 // The picks that follow the saved attempts: each resolves to one recording, or null
 function presets(cands) {
-	const own = cands.filter((h) => h.label !== 'replay');
-	const reps = cands.filter((h) => h.label === 'replay');
+	const own = cands.filter((h) => !isOther(h));
+	const reps = cands.filter((h) => isOther(h));
 	const minBy = (hs, f) => hs.reduce((b, h) => (Number.isFinite(f(h)) && (!b || f(h) < f(b)) ? h : b), null);
 	const fin = (h) => (h.reason === 'finish' && h.runTime ? h.runTime : NaN);
 	// A replay recording can stop before the run's end (its runTime is then short), so only replays that
@@ -542,14 +542,14 @@ function saveSetting(id, key, value, def) {
 // Jump-1 takeoff median of the other own attempts on this map and tickrate (j1Takeoff from the server)
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && a.label !== 'replay' && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
 
 function findMistakes() {
 	if (!cur) return;
-	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head), cur.head.label === 'replay');
+	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head), isOther(cur.head));
 	if (selMistake && !cur.mistakes.some((m) => m.check === selMistake.check && m.i0 === selMistake.i0)) selMistake = null;
 	showMistakes();
 }
@@ -559,7 +559,7 @@ function showMistakes() {
 	box.replaceChildren();
 	const ms = cur ? cur.mistakes : [];
 	const total = ms.reduce((t, m) => t + m.lost, 0);
-	const skipped = cur && cur.head.label === 'replay' ? " · key timing checks are skipped for replays (their keys run ahead of the turn)" : '';
+	const skipped = cur && isOther(cur.head) ? " · key timing checks are skipped for other players' recordings (replay keys run ahead of the turn)" : '';
 	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all${skipped}` : '';
 	if (cur && !ms.length) box.textContent = 'No mistakes found with the current settings.';
 	for (const m of ms) {
@@ -674,7 +674,7 @@ function showHead() {
 					: 'aligned on timer start';
 		note('ghost', `Ghost (dashed pink): ${labelText(gh)} · ${ghost.how} · ${when(gh.started)} · ${end} · ${al}`);
 		if (ghost.d.derived && !cur.d.derived) note('ghost', 'Ghost gain and angle rebuilt from speed');
-		if (gh.label === 'replay') note('ghost', 'Ghost keys not drawn: replay keys run ahead of the angles');
+		if (isOther(gh)) note('ghost', 'Ghost keys not drawn: replay keys run ahead of the angles');
 	}
 }
 
@@ -1053,7 +1053,7 @@ const LANE_DRAW = {
 		}
 		// the ghost's A and D: a thin pink strip along the bottom of those rows (not for replays, whose
 		// keys run 3-7 ticks ahead of the angles)
-		if (ghost && ghost.head.label !== 'replay') {
+		if (ghost && !isOther(ghost.head)) {
 			const gd = ghost.gd;
 			g.fillStyle = COL.ghost;
 			for (const i of ghost.order) {
@@ -1299,12 +1299,12 @@ function mouseField(i) {
 	const d = cur.d;
 	if (!m || !Number.isFinite(d.yaws[i]) || turnBtn(d, i)) return [];
 	const opt = Number.isFinite(d.opt[i]) ? `, opt ${cmPerSec(d.opt[i], cur.head.interval, m).toFixed(1)}` : '';
-	const whose = cur.head.label === 'replay' ? ' at your sens' : m.recorded ? '' : ' at current sens';
+	const whose = isOther(cur.head) ? ' at your sens' : m.recorded ? '' : ' at current sens';
 	return [['mouse', `${cmPerSec(Math.abs(d.yaws[i]), cur.head.interval, m).toFixed(1)} cm/s${opt}${whose}`]];
 }
 
 function showCm360() {
-	const m = mouseFor(cur ? cur.head : list.find((a) => a.label !== 'replay'), mouseNow, dpi);
+	const m = mouseFor(cur ? cur.head : list.find((a) => !isOther(a)), mouseNow, dpi);
 	$('cm360').textContent = m ? `${(360 * m.cmPerDeg).toFixed(1)} cm/360° at sens ${m.sens}` : '';
 }
 

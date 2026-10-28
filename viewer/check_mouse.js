@@ -68,7 +68,7 @@ let shown = 0;
 const ratios = [];
 for (const f of files.sort()) {
 	const a = JSON.parse(zlib.gunzipSync(fs.readFileSync(f)));
-	if (a.label === 'replay') continue;
+	if (isOther(a)) continue;
 	const dd = parse(a);
 	const { jumps, j1 } = findJumps(dd, a.preRows);
 	if (j1 < 0) continue;
