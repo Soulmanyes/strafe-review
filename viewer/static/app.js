@@ -984,9 +984,10 @@ const LANE_DRAW = {
 
 	yaw(g, l, d, i0, i1) {
 		const ok = strafingRows(d);
-		// scales come from the whole attempt, so panning or zooming never rescales a lane
-		const optMax = quantile(d, 0, d.n - 1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
-		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, 0, d.n - 1, (i) => Math.abs(d.yawd[i]), 0.98));
+		// scales to the ticks in view: the optimal falls as speed rises, so a whole-attempt scale (set by the
+		// slow start) squashes the late, fast jumps; the band keeps each jump readable on its own
+		const optMax = quantile(d, i0, i1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
+		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, i0, i1, (i) => Math.abs(d.yawd[i]), 0.98));
 		// signed, each side has half the lane, so the scale is tighter (raw spikes past it are clipped)
 		if ($('yaw-signed').checked) return yawSigned(g, l, d, i0, i1, hi / 1.6);
 		const Y = yMap(l, 0, hi);
