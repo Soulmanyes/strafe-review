@@ -4,13 +4,15 @@ Per-tick strafe recording and review for Momentum Mod. A custom HUD script recor
 
 Status: recorder, collector and viewer work. The viewer has three pages:
 
-- `/`: one attempt as a zoomable graph, with run stats and the mistakes found. "Compare page" opens it on /compare.
+- `/`: one attempt as a zoomable graph, with run stats (including CS:S-style SSJ gain), the mistakes found and a top-down path. Attempts take notes and tags; automatic tags mark PBs and sens changes. The list filters by map, tickrate, style, result and tag, has a search box, and sorts by date, fastest finish, jump 1 speed or player. "Compare page" opens it on /compare.
 - `/drill`: jump 1 of every attempt, stacked and side by side, updated live, with each strafe's mouse movement in cm next to the optimal (type your mouse DPI in once).
-- `/compare`: 2 to 4 recordings on one graph, with every run stat side by side (best per row marked), per jump numbers and mistakes. Quick picks: your fastest finish, your best jump 1, top replay.
+- `/compare`: 2 to 4 recordings on one graph, with every run stat side by side (best per row marked), per jump numbers, mistakes and paths. The picker has the same search and sort. Quick picks: your fastest finish, your best jump 1, top replay.
 
 In game, the recorder shows a 3-row line after jump 1 lands: landing speed, gain % per strafe and the biggest mistake.
 
-Next: top-down path, notes/tags/filters, PNG export. See [PLAN.md](PLAN.md) and the feature plan doc with drawings:
+Replays played to the end count as finishes.
+
+Next: PNG export, progress over time, 66-tick surf and bhop bonuses. See [PLAN.md](PLAN.md) and the feature plan doc with drawings:
 (link removed)
 
 ## Setup (so far)
