@@ -117,7 +117,7 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Reads `yaw.log` from the start, then follows it. Only complete lines count. A truncated or replaced log is read again from the start.
   - Saves each complete attempt to `~/.local/share/strafe-review/attempts/<map>/<id>.json.gz`: the attempt's JSON exactly as the recorder sent it. Files are written to a temp name and renamed, so a reader never sees half a file. This path and layout are part of the stable format.
   - An attempt whose file already exists is skipped, so re-reading the whole log is safe. Chunks with no end line for 10 minutes are dropped.
-  - Started by the Steam launch option wrapper `collector/strafe-review-run` (linked into `~/.local/bin` by `collector/install.sh`): `strafe-review-run sourceyaw-run %command%`. It runs the collector while the game runs and logs to `~/.local/state/strafe-review/collector.log`. Not hooked into Source Yaw's own `sourceyaw-run`: Steam runs the installed copy, and the public repo must not name this project.
+  - Started by the Steam launch option wrapper `collector/strafe-review-run` (linked into `~/.local/bin` by `collector/install.sh`): `strafe-review-run sourceyaw-run %command%`. Since 2026-10-28 the collector runs as a thread of `viewer/server.py` (see "Windows standalone"); the wrapper starts that server, not the collector. Not hooked into Source Yaw's own `sourceyaw-run`: Steam runs the installed copy, and the public repo must not name this project.
   - Tested without the game on the play-test log: 6 of 6 attempts saved from uneven slices, none saved twice after a restart, recovery after truncation, and the same files as `check_recorder.py --save`.
 - **Tickrate.** Momentum surf maps run at 66 ticks per second and bhop maps at 100. Store the tick interval with every attempt.
 - **Labels.** Every recording is labelled as one of: your own run, someone else's replay, or a ghost. The label is shown everywhere it appears.
@@ -552,6 +552,22 @@ Owner's scope: bhop bonuses on surf maps (66 tick), not surfing itself.
   - Check: `node viewer/check_line.js --interval 0.015` replays every own attempt as if at 66 tick through both the recorder and the viewer (211/211 same; 8 attempts lose an early-reversal flag vs 100 tick).
   - `check_line.js --log` can show DIFFs for 66-tick lines logged before the recorder got `atRate()` (surf_artois Bonus 1 runs of 2026-10-28): those were judged with 100-tick counts. Not a bug.
 - **Physics at 66 tick:** the 30 u/s air add holds (own surf_artois Bonus 1 finish: 1254 air rows, none above ideal). Own bonus finishes: 18.75 s and 19.37 s, 84 % gain, 22-23 jumps landed. SSJ is shown at 66 tick too, not checked against a server (66-tick CS:S gain out of scope, see above).
+
+## Windows standalone (owner, 2026-10-28)
+
+Goal: other people can use Strafe Review on Windows. A standalone release comes first, then going public. A merge into Source Yaw is maybe later, not now. Windows must not wait for the Source Yaw Windows port. Claude can't test on Windows (no Wine); the owner tests every Windows build. The repo stays private until `/go-public`.
+
+1. **One process (done 2026-10-28).** `viewer/server.py` runs the collector in a thread (`collect()`), so one process tails the log and serves the pages.
+   - It binds the port first. A busy port means another copy is already collecting, so it exits.
+   - The collector thread starts over after an error (5 s), so the page never keeps showing while nothing is saved.
+   - `--log FILE` picks the log, `--no-collect` only serves. Game folder, log and store come from `collector.py` (`GAME`, `LOG`, `STORE`), the one place step 3 changes.
+   - `collector.save()` skips a file that exists and writes through its own `mkstemp` tmp file, so two collectors on one log (say, an old wrapper and the server) never corrupt a file. Tested: server plus standalone collector on a copy of `yaw.log`, 321 attempts, all parse, no tmp left; SSE fired.
+   - `collector.py` still runs alone (`--once` to re-import a log).
+   - Linux: `strafe-review-run` starts the server as the systemd user unit `strafe-review` (`systemd-run --user --collect`), outside Steam's process tree. So it keeps running after the game quits, and Steam doesn't wait for it. Output: `journalctl --user -u strafe-review`.
+2. **Own `con_logfile`.** Add `con_logfile yaw.log` to Momentum's `cfg/autoexec.cfg` (back it up first). Decided 2026-10-28: share `yaw.log` with Source Yaw rather than rename. Only one `con_logfile` is active at a time, so the same name means both tools work with either or both installed, in Momentum and later CS:S. `console.log` would clash with `-condebug`. A rename would need a Source Yaw release for a name users never see.
+3. **Cross-platform paths and a Python install/start in place of bash.** Find the Momentum folder (Windows: registry `SteamPath` + `libraryfolders.vdf`), copy the recorder into `custom/strafe-review`, check the shadowed `timer.xml` against `recorder/timer.xml.upstream.sha256`, and keep the store under `%LOCALAPPDATA%` on Windows.
+4. **Windows PyInstaller .exe zip** as a GitHub release. `server.py` imports `collector` through a `sys.path` insert, so PyInstaller needs `--paths collector`. The owner tests it.
+5. **`/go-public`:** privacy (player names like player D, server IPs, demo files), licences, README screenshots, release.
 
 ## Later / undecided
 

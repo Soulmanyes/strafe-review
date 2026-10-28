@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -23,6 +24,7 @@ GAME = os.environ.get(
     os.path.expanduser("~/.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum"),
 )
 STORE = Path(os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))) / "strafe-review" / "attempts"
+LOG = os.path.join(GAME, "yaw.log")  # con_logfile, shared with Source Yaw's yaws.cfg
 POLL = 0.25  # seconds between reads when the log has nothing new
 STALE = 600  # seconds after which an attempt without its end line is dropped
 
@@ -73,14 +75,22 @@ def known_ids(store):
 
 
 def save(store, attempt):
+    """Write the attempt, or return None if it is already on disk (another collector may tail the same log)."""
     folder = store / map_dir(attempt.get("map"))
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{attempt['id']}.json.gz"
-    # write then rename, so a reader never sees a half-written file
-    tmp = folder / f".{attempt['id']}.tmp"
-    with gzip.open(tmp, "wt", encoding="utf-8") as f:
-        json.dump(attempt, f, separators=(",", ":"))
-    os.replace(tmp, path)
+    if path.exists():
+        return None
+    # write a tmp file of our own then rename, so a reader never sees a half-written file
+    # and two collectors never write the same tmp file
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{attempt['id']}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as raw, gzip.open(raw, "wt", encoding="utf-8") as f:
+            json.dump(attempt, f, separators=(",", ":"))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -105,7 +115,8 @@ def run(log, store, once):
         elif kind == "attempt" and value.get("id") not in known:
             path = save(store, value)
             known.add(value["id"])
-            print(f"collector: saved {path}", flush=True)
+            if path:
+                print(f"collector: saved {path}", flush=True)
     for b in asm.leftover():
         print(f"collector: unfinished {b}", flush=True)
 
@@ -120,7 +131,7 @@ def main():
         i = args.index("--store")
         store = Path(args[i + 1])
         del args[i:i + 2]
-    log = args[0] if args else os.path.join(GAME, "yaw.log")
+    log = args[0] if args else LOG
     try:
         run(log, store, once)
     except KeyboardInterrupt:

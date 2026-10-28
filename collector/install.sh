@@ -1,5 +1,5 @@
 #!/bin/sh
-# Link strafe-review-run into ~/.local/bin; it runs this folder's collector.py, so
+# Link strafe-review-run into ~/.local/bin; it starts this repo's viewer/server.py, so
 # keep the repo where it is. Then set Momentum Mod's Steam launch options to:
 #   strafe-review-run sourceyaw-run %command%
 # Undo with: install.sh --uninstall

@@ -21,7 +21,7 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 
 1. `recorder/install.sh` copies the recorder HUD script into Momentum's `custom/` folder. Type `panorama_reload` in game after updating it.
 2. `collector/install.sh` links `strafe-review-run` into `~/.local/bin`.
-3. Set Momentum Mod's Steam launch options to `strafe-review-run sourceyaw-run %command%`. Attempts are saved to `~/.local/share/strafe-review/attempts/<map>/`.
-4. `python viewer/server.py` serves the review page on http://127.0.0.1:8765/ (`--port` to change it).
+3. Set Momentum Mod's Steam launch options to `strafe-review-run sourceyaw-run %command%`. When the game starts, it starts `viewer/server.py` as the systemd user unit `strafe-review`, which stays running after the game quits (`systemctl --user stop strafe-review` to stop it).
+4. The server collects attempts from `yaw.log` into `~/.local/share/strafe-review/attempts/<map>/` and serves the review page on http://127.0.0.1:8765/. You can also start it by hand: `python viewer/server.py` (`--port` to change the port, `--no-collect` to only serve).
 
 License: CC0 1.0 (see [LICENSE](LICENSE)).

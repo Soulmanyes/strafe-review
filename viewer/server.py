@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Strafe Review viewer: serves the saved attempts and the review page on localhost.
 
-    python viewer/server.py [--port 8765] [--store DIR]
+    python viewer/server.py [--port 8765] [--store DIR] [--log FILE] [--no-collect]
+
+It also runs the collector (collector/collector.py) in a thread, tailing Momentum's yaw.log, so one
+process records and serves. If the port is taken, another copy is already doing both and this one exits.
 
 Routes:
   /                          the page (viewer/static/index.html)
@@ -33,17 +36,20 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "collector"))
+import collector  # found through the path above
+
 STATIC = Path(__file__).resolve().parent / "static"
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 # Same characters collector.map_dir() keeps; a leading dot is refused so ".." never names a folder
 MAP = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 ID = re.compile(r"[a-z0-9]{1,40}")
-GAME_CFG = "~/.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum/cfg/config.cfg"
+GAME_CFG = os.path.join(collector.GAME, "cfg", "config.cfg")
 CVAR = re.compile(r'^\s*(sensitivity|m_yaw)\s+"([^"]*)"', re.MULTILINE)
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
-MOM_DIR = Path(os.path.expanduser(GAME_CFG)).parent.parent  # replayFile paths are relative to this
+MOM_DIR = Path(GAME_CFG).parent.parent  # replayFile paths are relative to this
 # .mtv header (formats 1 and 2 alike here, worked out from online replays, 2026-10-28): "MMTV", int32 version,
 # int64 date, map name [64], map hash [41], uint16, float tick interval at 0x7b, uint64 SteamID,
 # player name [33], one byte, then the run time as a double at 0xa9
@@ -58,6 +64,7 @@ MAX_TAG = 40
 MAX_TAGS = 20
 SPECTATE_MIN_AIR = 20  # same as static/data.js
 POLL = 0.5  # seconds between store scans for /api/events
+COLLECT_RETRY = 5  # seconds before the collector thread starts over after an error
 PING = 15  # seconds between keep-alive comments
 
 
@@ -370,18 +377,37 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def collect(log, store):
+    """Run the collector for good; an error is printed and the collector starts over, so the page never
+    keeps showing while nothing is saved. Starting over is safe: attempts already on disk are skipped."""
+    while True:
+        try:
+            collector.run(log, store, once=False)
+        except Exception as e:  # noqa: BLE001 - any error, the thread must live on
+            print(f"collector: {type(e).__name__}: {e}, starting over in {COLLECT_RETRY} s", file=sys.stderr, flush=True)
+        time.sleep(COLLECT_RETRY)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--store", default=os.path.expanduser("~/.local/share/strafe-review/attempts"))
-    ap.add_argument("--game-cfg", default=os.path.expanduser(GAME_CFG), help="Momentum's cfg/config.cfg")
+    ap.add_argument("--store", default=str(collector.STORE))
+    ap.add_argument("--game-cfg", default=GAME_CFG, help="Momentum's cfg/config.cfg")
+    ap.add_argument("--log", default=collector.LOG, help="the console log to collect from (con_logfile)")
+    ap.add_argument("--no-collect", action="store_true", help="only serve, don't collect")
     args = ap.parse_args()
     Handler.store = Path(args.store)
     Handler.game_cfg = Path(args.game_cfg)
     global MOM_DIR
     MOM_DIR = Handler.game_cfg.parent.parent
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Strafe Review viewer on http://127.0.0.1:{args.port}/ (attempts from {args.store})")
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError as e:
+        # bound before collecting: a busy port means another copy is already collecting
+        sys.exit(f"Strafe Review: port {args.port} is in use ({e.strerror}); is it already running?")
+    if not args.no_collect:
+        threading.Thread(target=collect, args=(args.log, Handler.store), daemon=True).start()
+    print(f"Strafe Review viewer on http://127.0.0.1:{args.port}/ (attempts from {args.store})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

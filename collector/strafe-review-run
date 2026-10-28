@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# Steam launch option wrapper: runs the collector while Momentum Mod runs.
+# Steam launch option wrapper: makes sure Strafe Review (viewer/server.py, which also
+# runs the collector) is running while Momentum Mod runs.
 #   strafe-review-run sourceyaw-run %command%
-# collector/install.sh links it into ~/.local/bin. Output goes to
-# ~/.local/state/strafe-review/collector.log.
-# keep Steam's runtime libraries and overlay out of the collector; the game gets them back
-GAME_PRELOAD=${LD_PRELOAD-}
-GAME_LIBS=${LD_LIBRARY_PATH-}
-unset LD_PRELOAD LD_LIBRARY_PATH
-
+# collector/install.sh links it into ~/.local/bin.
+# The server is started as its own systemd user unit, outside Steam's process tree, so it
+# keeps running after the game quits (review after playing) and Steam doesn't wait for it.
+# Output: journalctl --user -u strafe-review. Stop it: systemctl --user stop strafe-review.
+# If it is already running (the unit, or a server started by hand on port 8765), the new
+# copy finds the port taken and exits.
 DIR="$(dirname "$(readlink -f "$0")")"
-STATE="${XDG_STATE_HOME:-$HOME/.local/state}/strafe-review"
-mkdir -p "$STATE"
+SERVER="$DIR/../viewer/server.py"
 
-{ date; echo "args: $*"; } > "$STATE/collector.log"
-python3 "$DIR/collector.py" >> "$STATE/collector.log" 2>&1 &
-COLLECTOR=$!
-trap 'kill $COLLECTOR 2>/dev/null; wait $COLLECTOR 2>/dev/null' EXIT
-trap 'exit 143' TERM INT HUP
+if ! systemctl --user is-active --quiet strafe-review; then
+	env_args=()
+	for v in MOMENTUM_DIR XDG_DATA_HOME; do
+		[ -n "${!v-}" ] && env_args+=(--setenv="$v=${!v}")
+	done
+	# systemd-run starts from the user manager's clean environment, so Steam's LD_PRELOAD
+	# and runtime libraries stay with the game
+	systemd-run --user --quiet --collect --unit=strafe-review "${env_args[@]}" \
+		python3 "$SERVER" || echo "strafe-review-run: could not start $SERVER" >&2
+fi
 
-LD_PRELOAD=$GAME_PRELOAD LD_LIBRARY_PATH=$GAME_LIBS "$@"
+exec "$@"
