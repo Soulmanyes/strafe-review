@@ -83,7 +83,9 @@ h1 { font-size: 17px; margin: 0; }
 	border-bottom: 1px solid var(--border);
 }
 #filters label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 12px; min-width: 0; }
+#filters .f-wide { grid-column: 1 / -1; }
 #filters select,
+#filters input,
 #meta input {
 	background: var(--card);
 	color: var(--text);
@@ -94,6 +96,7 @@ h1 { font-size: 17px; margin: 0; }
 	min-width: 0;
 }
 #filters select:hover:not(:disabled),
+#filters input:focus,
 #meta input:focus { outline: none; border-color: var(--accent); }
 #filters select:disabled { opacity: 0.5; }
 .f-foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }

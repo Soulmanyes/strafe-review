@@ -414,7 +414,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Sort and search in the recording lists (owner, 2026-10-28):** on both the main page's sidebar list and the /compare picker list, own runs and replays alike.
   - Sort: for example newest first, time, jump-1 gain, player name. Kept in localStorage.
   - Search: a text box matching player name, map, tags and note. It stacks with the existing filters.
-  - Not built yet.
+  - Built 2026-10-28, see "List sort and search v1".
 
 #### Notes, tags and filters v1 (2026-10-28)
 
@@ -452,6 +452,15 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - **PB:** a finish faster than every earlier own finish on the same map, tickrate, style and track. Practice runs are skipped, and the first finish counts.
   - Check: `node viewer/check_autotags.js` runs hand-made cases, then the tags the saved attempts get (189 attempts: 3 PBs on bhop_ambience, no sens stamped yet).
 - **Drill page tag filter:** a Tag select in the bar holds own and automatic tags of own attempts on the picked map. Only attempts with the tag are counted, and the "Latest session" scope is applied after the filter. Replays are not filtered. The choice is kept in localStorage `strafe-review-drill-tag`. Bulk tagging was offered and not wanted.
+
+#### List sort and search v1 (2026-10-28)
+
+- **Shared code:** `static/listsort.js`, loaded by the main page and /compare (/compare now also loads `autotags.js`, so automatic tags are searchable there too). The drill page is unchanged.
+- **Sorts:** newest first, oldest first, fastest finish (finished runs by time, then the rest), jump 1 landing speed (`j1Land`), jump 1 speed gained (`j1Land - j1Takeoff`), player name (replays and spectated, case ignored). The two jump-1 orders differ on real heads (zone takeoff varies by about 7 u/s), so both are offered. A recording without the value goes last in every sort; ties go newest first.
+- **Search:** case-ignored, every word must appear in the player, the label (Own run / Replay / Spectated), map, own or automatic tags, or the note. Not kept across reloads, so a forgotten search can't hide recordings.
+- **Main page:** search and sort sit at the top of the sidebar filters. The search counts as a filter ("N of M shown", the drill count, Clear filters, which also empties it). Sorting happens inside each map group; the groups keep their order (newest attempt's map first). On load the newest listed attempt still opens, whatever the sort. Sort kept in localStorage `strafe-review-sort`.
+- **/compare:** search box and Sort select in the Recordings header. Picked recordings stay listed even when the search would hide them. Quick picks are unaffected. Sort kept in `strafe-review-compare-sort`.
+- **Check:** `node viewer/check_listsort.js [--url http://127.0.0.1:8765]`: hand-made cases (order per sort, missing values last, ties, search words ANDed over tag, auto tag, note, player, label), then every sort on the running viewer's heads (265: missing values all last) and a search for a real auto tag.
 
 #### Run stats v1 (2026-10-28)
 

@@ -3,7 +3,13 @@
 #picker .sec-head button { margin-left: 0; }
 #graph .sec-head button + button { margin-left: 0; }
 #graph .align-tip { flex-basis: 100%; font-size: 13px; color: var(--text); }
-#picker .sec-head .drill-toggle { margin-left: auto; display: flex; gap: 6px; align-items: center; color: var(--muted); }
+#picker .sec-head #search { margin-left: auto; width: 220px; min-width: 0; }
+#picker .sec-head #search,
+#picker .sec-head .sort select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: 13px system-ui, sans-serif; }
+#picker .sec-head #search:focus,
+#picker .sec-head .sort select:hover { outline: none; border-color: var(--accent); }
+#picker .sec-head .sort { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+#picker .sec-head .drill-toggle { display: flex; gap: 6px; align-items: center; color: var(--muted); }
 #pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }
 .pick {
 	display: grid;

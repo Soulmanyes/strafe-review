@@ -17,6 +17,8 @@
 		<input type="checkbox" id="show-drills"><span>Show drills (<span id="drill-count">0</span>)</span>
 	</label>
 	<div id="filters">
+		<label class="f-wide">Search <input id="f-search" type="search" placeholder="Player, map, tag or note" title="Every word must match the player, map, a tag or the note"></label>
+		<label class="f-wide">Sort <select id="f-sort" title="Order inside each map. Recordings without the value go last."></select></label>
 		<label>Map <select id="f-map"></select></label>
 		<label>Tick <select id="f-tick"></select></label>
 		<label>Style <select id="f-style"></select></label>
@@ -98,6 +100,7 @@
 <script src="/static/mouse.js"></script>
 <script src="/static/runrows.js"></script>
 <script src="/static/autotags.js"></script>
+<script src="/static/listsort.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

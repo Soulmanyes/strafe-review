@@ -70,6 +70,7 @@ let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre);
 const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
 const FILTERS_KEY = 'strafe-review-filters'; // { map, tick, style, result, tag }: "" = all
+const SORT_KEY = 'strafe-review-sort';
 // Momentum's Style enum (common/web/enums/style.enum.ts); half-sideways is two values, bhop and surf
 const STYLES = ['Normal', 'Half-Sideways (bhop)', 'Half-Sideways (surf)', 'Sideways', 'W-Only', 'A/D-Only', 'S-Only', 'Backwards', 'Pro', 'Teleport'];
 const RESULTS = { finish: 'Finished', other: 'Not finished' };
@@ -153,7 +154,7 @@ function passesFilters(a) {
 		const want = $(id).value;
 		if (want && ![get(a)].flat().includes(want)) return false;
 	}
-	return true;
+	return matchesSearch(a, $('f-search').value);
 }
 
 function filtersChanged() {
@@ -193,14 +194,15 @@ function renderList() {
 	const hits = list.filter(shown).length;
 	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
-	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value);
-	const maps = [...new Set(visible.map((a) => a.dir))];
+	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
+	const maps = [...new Set(visible.map((a) => a.dir))]; // newest attempt's map first, whatever the sort
+	const sorted = sortHeads(visible, $('f-sort').value);
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
 		title.textContent = m;
 		box.append(title);
-		for (const a of visible.filter((x) => x.dir === m)) {
+		for (const a of sorted.filter((x) => x.dir === m)) {
 			const b = document.createElement('button');
 			b.className = 'att';
 			b.dataset.key = `${a.dir}/${a.id}`;
@@ -1462,8 +1464,11 @@ $('show-drills').onchange = () => {
 	renderList();
 };
 for (const [, id] of FILTERS) $(id).onchange = filtersChanged;
+$('f-search').oninput = renderList;
+initSort($('f-sort'), SORT_KEY, renderList);
 $('f-clear').onclick = () => {
 	for (const [, id] of FILTERS) $(id).value = '';
+	$('f-search').value = '';
 	filtersChanged();
 };
 $('tag-add').onkeydown = (e) => {
