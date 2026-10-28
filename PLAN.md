@@ -400,6 +400,9 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - a note box (saves on Enter or when clicking away; Esc undoes)
 
   The row sits outside `#head`, so a live list refresh never wipes what is being typed. List items show the tags and the note's first line.
+  - Saves go out one at a time, in order. Each edit is applied to the list at once, so a second edit made while the first is still being saved builds on it instead of undoing it (tested: note change + tag × back to back give one body with both).
+  - A new tag that another attempt already has, ignoring case, takes that spelling, so the tag filter finds both.
+  - The list keeps its scroll position when it is rebuilt.
 - **Filters** (sidebar, under "Show drills"): map, tickrate, style (Momentum's style names; half-sideways is 1 = bhop, 2 = surf), result (finished / not finished) and tag.
   - Each select lists only values the saved attempts have. A select with a single value is greyed out; the tag select only when there are no tags.
   - Choices are saved in localStorage `strafe-review-filters`.

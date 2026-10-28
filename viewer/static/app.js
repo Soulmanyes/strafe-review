@@ -173,6 +173,7 @@ function shown(a) {
 
 async function loadList() {
 	list = await (await fetch('/api/attempts')).json();
+	applyWanted(); // edits still on their way to the server
 	fillFilters();
 	fillTagList();
 	renderList();
@@ -190,6 +191,7 @@ async function loadList() {
 
 function renderList() {
 	const box = $('list');
+	const scroll = box.scrollTop; // rebuilt on every open and save; stay where the owner scrolled to
 	box.replaceChildren();
 	if (!list.length) box.textContent = 'No attempts saved yet.';
 	$('drill-count').textContent = list.filter(isDrill).length;
@@ -248,6 +250,7 @@ function renderList() {
 		box.append(n);
 	}
 	markSelected();
+	box.scrollTop = scroll;
 }
 
 // ---------- note and tags ----------
@@ -283,37 +286,67 @@ function showMeta() {
 	$('meta-status').textContent = '';
 }
 
-async function saveMeta(change) {
+// Saves go to the server one at a time, in order. Each change is applied to the list at once and
+// remembered in metaWant until it is stored, so a second edit made while the first is still on its
+// way (note typed, then a tag's × clicked) builds on the first instead of undoing it.
+const metaWant = new Map(); // "<dir>/<id>" -> { note, tags } not yet confirmed by the server
+let metaQueue = Promise.resolve();
+
+function applyWanted() {
+	for (const [key, want] of metaWant) {
+		const e = list.find((a) => `${a.dir}/${a.id}` === key);
+		if (e) Object.assign(e, want);
+	}
+}
+
+function metaShown() {
+	fillFilters();
+	fillTagList();
+	renderList();
+	showMeta();
+}
+
+function saveMeta(change) {
 	const e = listEntry();
 	if (!e) return;
 	const key = `${e.dir}/${e.id}`;
-	const body = { note: e.note || '', tags: e.tags || [], ...change };
+	const want = { note: e.note || '', tags: e.tags || [], ...change };
+	metaWant.set(key, want);
+	Object.assign(e, want);
+	metaShown();
 	$('meta-status').textContent = 'Saving…';
+	metaQueue = metaQueue.then(() => postMeta(key));
+}
+
+async function postMeta(key) {
+	const want = metaWant.get(key);
+	if (!want) return; // a later save already sent this attempt's newest state
+	const [dir, id] = key.split('/');
 	let res;
 	try {
-		res = await fetch(`/api/meta/${encodeURIComponent(e.dir)}/${encodeURIComponent(e.id)}`, {
+		res = await fetch(`/api/meta/${encodeURIComponent(dir)}/${encodeURIComponent(id)}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body)
+			body: JSON.stringify(want)
 		});
 	} catch {
 		res = null;
 	}
+	const isOpen = () => cur && `${cur.head.dir}/${cur.head.id}` === key;
 	if (!res || !res.ok) {
-		$('meta-status').textContent = res && res.status === 404 ? 'Not saved: restart the viewer (new route)' : 'Not saved';
+		metaWant.delete(key);
+		await loadList(); // show what the server really has
+		if (isOpen()) showMeta();
+		if (isOpen()) $('meta-status').textContent = res && res.status === 404 ? 'Not saved: restart the viewer (new route)' : 'Not saved';
 		return;
 	}
 	const saved = await res.json();
-	// the list may have been fetched again meanwhile: write into whichever entry is current
+	if (metaWant.get(key) !== want) return; // changed again meanwhile: that save is queued
+	metaWant.delete(key);
 	const now = list.find((a) => `${a.dir}/${a.id}` === key);
 	if (now) Object.assign(now, saved);
-	fillFilters();
-	fillTagList();
-	renderList();
-	if (cur && `${cur.head.dir}/${cur.head.id}` === key) {
-		showMeta();
-		$('meta-status').textContent = 'Saved';
-	}
+	metaShown();
+	if (isOpen()) $('meta-status').textContent = 'Saved';
 }
 
 function addTag() {
@@ -321,7 +354,9 @@ function addTag() {
 	if (!t) return;
 	$('tag-add').value = '';
 	const tags = listEntry()?.tags || [];
-	if (!tags.some((o) => o.toLowerCase() === t.toLowerCase())) saveMeta({ tags: [...tags, t] });
+	// a tag another attempt already has keeps that spelling, so the tag filter finds both
+	const known = list.flatMap((a) => a.tags || []).find((o) => o.toLowerCase() === t.toLowerCase());
+	if (!tags.some((o) => o.toLowerCase() === t.toLowerCase())) saveMeta({ tags: [...tags, known || t] });
 }
 
 function markSelected() {
