@@ -60,4 +60,8 @@ Attempts are kept in `~/.local/share/strafe-review/attempts`.
 
 More plans: [PLAN.md](PLAN.md).
 
+## Thanks
+
+Thanks to Frank for testing the Windows version and helping track down why it didn't record next to other HUD mods.
+
 License: CC0 1.0 (see [LICENSE](LICENSE)). The Windows exe also bundles Python, OpenSSL and the PyInstaller bootloader under their own licences; see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
