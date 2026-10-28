@@ -388,9 +388,12 @@ async function open(dir, id) {
 	a.dir = dir;
 	const d = parse(a);
 	const { jumps, j1 } = findJumps(d, a.preRows);
-	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: a.postRows ? d.n - 1 - a.postRows : d.n - 1 };
+	// runEnd(), not just before the post tail: a replay pauses at its end and keeps sending rows
+	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: runEnd(a, d) };
 	pathView = null;
 	cur.path = { ...buildPath(d, a.interval, a.preRows), pct: pathPct(d, jumps) };
+	// a paused replay's extra rows keep their last velocity, so the path would run on past the end: no position
+	for (let i = cur.endIdx + 1; i <= d.n - 1 - (a.postRows || 0); i++) cur.path.x[i] = cur.path.y[i] = NaN;
 	location.hash = `${dir}/${id}`;
 	showCm360();
 	hoverIdx = -1;
