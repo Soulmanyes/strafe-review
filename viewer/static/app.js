@@ -12,7 +12,8 @@ const COL = {
 	raw: '#4fc3f766',
 	opt: '#7bd88f',
 	band: '#7bd88f2e',
-	loss: '#ff5c5c80',
+	loss: '#c8d2e633', // neutral, so it never hides the red-green gain line
+	idealGain: '#e6e9efaa',
 	bad: '#ff5c5c',
 	wide: '#ffb45499',
 	narrow: '#6c9cff99',
@@ -34,8 +35,7 @@ const LANES = [
 	{ id: 'jumps', h: 38, title: 'Jumps', sub: 'gain % of ideal' },
 	{ id: 'yaw', h: 140, title: 'Yaw speed', sub: '°/tick vs optimal' },
 	{ id: 'ratio', h: 110, title: 'Angle', sub: 'yawRatio, 1 = optimal' },
-	{ id: 'gain', h: 140, title: 'Gain', sub: 'u/s per tick vs ideal' },
-	{ id: 'pct', h: 110, title: 'Gain %', sub: 'of ideal, 5-tick' },
+	{ id: 'gain', h: 140, title: 'Gain', sub: 'u/s per tick vs ideal, colour = %' },
 	{ id: 'keys', h: 112, title: 'Keys', sub: 'held vs ideal' },
 	{ id: 'speed', h: 120, title: 'Speed', sub: 'u/s, ground shaded' },
 	{ id: 'gaps', h: 26, title: 'Missed ticks', sub: '' }
@@ -1038,7 +1038,7 @@ const LANE_DRAW = {
 		}
 		const isAir = air(d);
 		const ok = strafingRows(d);
-		// unlike the other lanes, gain scales to the ticks in view (owner's pick); the Gain % lane below has a fixed scale
+		// unlike the other lanes, gain scales to the ticks in view (owner's pick)
 		const hi = Math.max(0.1, quantile(d, i0, i1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
 		const lo = Math.max(-hi, Math.min(0, minOf(d, i0, i1, (i) => (ok(i) ? d.gain[i] : NaN))));
 		const Y = yMap(l, lo, hi);
@@ -1049,46 +1049,24 @@ const LANE_DRAW = {
 			const X0 = px(d.x[i] - 0.5);
 			g.fillRect(X0, Y(d.ideal[i]), Math.max(px(d.x[i] + 0.5) - X0, 1), Y(d.gain[i]) - Y(d.ideal[i]));
 		}
-		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.opt, 1.5, isAir);
+		// ideal in light grey, not the usual green: the gain line itself goes red to green
+		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.idealGain, 1.5, isAir);
 		if (!ghost?.gd.coarse) ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
-		line(g, d, i0, i1, (i) => d.gain[i], Y, COL.line, 2, isAir);
-		yLabels(l, Y, lo < 0 ? [lo, 0, hi] : [0, hi / 2, hi], (v) => v.toFixed(2));
-	},
-
-	// 5-tick gain % of ideal (the path's colour), on a fixed 0-120 % scale; values past it are clamped
-	pct(g, l, d, i0, i1) {
-		const Y = yMap(l, 0, 120);
-		const yc = (v) => Y(Math.max(0, Math.min(120, v)));
-		g.lineWidth = 1;
-		for (const [v, col] of [[60, COL.bad], [95, COL.opt]]) {
-			g.strokeStyle = col;
-			g.globalAlpha = 0.45;
-			g.setLineDash([4, 4]);
-			g.beginPath();
-			g.moveTo(GUTTER, Y(v));
-			g.lineTo(base.clientWidth, Y(v));
-			g.stroke();
-		}
-		g.setLineDash([]);
-		g.globalAlpha = 1;
-		if (ghost && !ghost.gd.coarse) {
-			ghost.pct ??= pathPct(ghost.gd, []);
-			ghostLine(g, (i) => ghost.pct[i], yc);
-		}
-		// one stroke per tick step, coloured like the path
+		// gain, each tick step coloured by the 5-tick gain % of ideal (the path's colour)
 		const pct = cur.path.pct;
-		g.lineWidth = 2;
+		g.lineWidth = 2.5;
+		g.lineCap = 'round';
 		for (let i = Math.max(1, i0); i <= i1; i++) {
-			const a = pct[i - 1];
-			const b = pct[i];
-			if (!Number.isFinite(a) || !Number.isFinite(b) || d.gap[i] > 0) continue;
-			g.strokeStyle = gainColor(b);
+			if (!isAir(i) || !isAir(i - 1) || d.gap[i] > 0) continue;
+			if (!Number.isFinite(d.gain[i]) || !Number.isFinite(d.gain[i - 1])) continue;
+			g.strokeStyle = gainColor(pct[i]);
 			g.beginPath();
-			g.moveTo(px(d.x[i - 1]), yc(a));
-			g.lineTo(px(d.x[i]), yc(b));
+			g.moveTo(px(d.x[i - 1]), Y(d.gain[i - 1]));
+			g.lineTo(px(d.x[i]), Y(d.gain[i]));
 			g.stroke();
 		}
-		yLabels(l, Y, [0, 60, 95, 120], (v) => `${v} %`);
+		g.lineCap = 'butt';
+		yLabels(l, Y, lo < 0 ? [lo, 0, hi] : [0, hi / 2, hi], (v) => v.toFixed(2));
 	},
 
 	keys(g, l, d, i0, i1, tickPx) {
