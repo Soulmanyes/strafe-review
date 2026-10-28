@@ -1342,6 +1342,7 @@ function drawPath() {
 		g.fill();
 		if (shown.length <= 40) g.fillText(String(j.num), X(j.s) + 5, Y(j.s) - 5);
 	}
+	if (ghost) drawGhostMarks(g, gIn);
 	// timer start and run end
 	const ring = (i, col, text) => {
 		if (i < r0 || i > r1 || !Number.isFinite(x[i])) return;
@@ -1378,43 +1379,71 @@ function ghostInRange(r0, r1) {
 	return (i) => ghost.gd.x[i] >= lo && ghost.gd.x[i] <= hi;
 }
 
-// The ghost on the path: dashed pink under the open attempt (a red-green ghost over the red-green path
-// couldn't be read), with a ring where its run ends
+// The ghost's line on the path: dashed, under the open attempt, coloured by its 5-tick gain % in pink from
+// dark (60 %) to bright (95 %) (a red-green ghost over the red-green path couldn't be read)
 function drawGhostPath(g, gIn) {
-	const { x, y, brk } = ghost.path;
+	const { x, y, brk, pct } = ghost.path;
 	const { s, ox, oy } = pathFit;
 	const X = (i) => ox + x[i] * s;
 	const Y = (i) => oy - y[i] * s;
-	g.strokeStyle = COL.ghost;
 	g.lineCap = 'butt';
+	g.lineJoin = 'round';
 	g.setLineDash([6, 4]);
-	// joined runs of rows (moveTo only at a break), so the dash pattern runs on along the line
-	for (const dim of [true, false]) {
-		g.globalAlpha = dim ? 0.22 : 0.9;
-		g.lineWidth = dim ? 1.5 : 2;
-		g.beginPath();
-		let open = false;
-		for (let i = 1; i < ghost.d.n; i++) {
-			if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1]) || !gIn(i) === !dim) {
-				open = false;
-				continue;
-			}
-			if (!open) g.moveTo(X(i - 1), Y(i - 1));
-			g.lineTo(X(i), Y(i));
-			open = true;
-		}
+	// one stroke per run of rows with the same colour (moveTo only at a break), so the dashes run on
+	let run = null;
+	const flush = () => {
+		if (!run) return;
+		g.strokeStyle = run.col;
+		g.globalAlpha = run.dim ? 0.22 : 1;
+		g.lineWidth = run.dim ? 1.5 : 2.2;
 		g.stroke();
+		run = null;
+	};
+	for (let i = 1; i < ghost.d.n; i++) {
+		if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1])) {
+			flush();
+			continue;
+		}
+		const col = gainShade(ghost.d.ground[i] ? NaN : pct[i], COL.ghost);
+		const dim = !gIn(i);
+		if (!run || run.col !== col || run.dim !== dim) {
+			flush();
+			run = { col, dim };
+			g.beginPath();
+			g.moveTo(X(i - 1), Y(i - 1));
+		}
+		g.lineTo(X(i), Y(i));
 	}
+	flush();
 	g.setLineDash([]);
 	g.globalAlpha = 1;
+}
+
+// The ghost's takeoffs with their jump numbers (pink, left of the dot; the open attempt's sit on the right)
+// and a ring where its run ends. Drawn over the open attempt's path.
+function drawGhostMarks(g, gIn) {
+	const { x, y } = ghost.path;
+	const { s, ox, oy } = pathFit;
+	const X = (i) => ox + x[i] * s;
+	const Y = (i) => oy - y[i] * s;
 	const e = runEnd(ghost.head, ghost.d);
+	const tk = ghost.jumps.filter((j) => j.num && j.s <= e && gIn(j.s) && Number.isFinite(x[j.s]));
+	g.font = '600 11px system-ui, sans-serif';
+	g.fillStyle = COL.ghost;
+	g.textAlign = 'right';
+	for (const j of tk) {
+		g.beginPath();
+		g.arc(X(j.s), Y(j.s), 3, 0, 2 * Math.PI);
+		g.fill();
+		if (tk.length <= 40) g.fillText(String(j.num), X(j.s) - 5, Y(j.s) - 5);
+	}
+	g.textAlign = 'left';
 	if (gIn(e) && Number.isFinite(x[e])) {
+		g.strokeStyle = COL.ghost;
 		g.lineWidth = 2;
 		g.beginPath();
 		g.arc(X(e), Y(e), 6, 0, 2 * Math.PI);
 		g.stroke();
-		g.fillStyle = COL.ghost;
-		g.font = '600 11px system-ui, sans-serif';
 		// above the ring: the open attempt's end label sits below its own ring, often right next to it
 		g.fillText(ghost.head.reason === 'finish' ? 'ghost finish' : 'ghost end', X(e) + 9, Y(e) - 8);
 	}

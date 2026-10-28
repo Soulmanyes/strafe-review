@@ -46,3 +46,8 @@ table.cmp td.miss { color: var(--muted); }
 #plot canvas { position: absolute; left: 0; top: 0; }
 .readout { min-height: 22px; font: 12px ui-monospace, monospace; margin-bottom: 6px; display: flex; flex-direction: column; gap: 2px; }
 .readout .k { color: var(--muted); }
+#path-roles { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 6px; font-size: 13px; }
+#path-roles .role { display: flex; align-items: center; gap: 6px; }
+#path-roles .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; }
+#path-roles button { padding: 1px 8px; font-size: 12px; }
+#path-roles button.on { background: var(--card-hi); border-color: var(--accent); color: var(--text); }

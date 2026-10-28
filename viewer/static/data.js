@@ -378,4 +378,16 @@ function recordingPath(head, d, jumps, endIdx) {
 	return path;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath };
+// A comparison's gain colour: its own colour (hex #rrggbb) from dark at 60 % and under to bright at 95 % and
+// over, so it never clashes with the red-green scale of the recording it is compared with. No % (ground,
+// no stats): the plain colour, half see-through.
+function gainShade(p, hex) {
+	if (!Number.isFinite(p)) return `${hex}80`;
+	const t = Math.max(0, Math.min(1, (p - 60) / 35));
+	const ch = (k) => parseInt(hex.slice(k, k + 2), 16);
+	// dark = 45 % of the colour (still visible on the dark card), bright = the colour mixed 35 % toward white
+	const mix = (c) => Math.round(c * 0.45 + (c + (255 - c) * 0.35 - c * 0.45) * t);
+	return `rgb(${mix(ch(1))},${mix(ch(3))},${mix(ch(5))})`;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };

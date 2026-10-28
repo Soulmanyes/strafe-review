@@ -240,6 +240,10 @@ async function build() {
 		return { ...r, color: COLORS[k], gd, order, used, matched, path };
 	});
 	pathView = null;
+	const ids = shown.map((r) => r.id);
+	if (!ids.includes(pathFocus)) pathFocus = ids[0] ?? null;
+	if (!ids.includes(pathCmp) || pathCmp === pathFocus) pathCmp = ids.find((id) => id !== pathFocus) ?? null;
+	showPathRoles();
 	showStats();
 	showPerJump();
 	showMistakes();
@@ -788,6 +792,10 @@ function drawHover() {
 
 let pathFit = null; // { s, ox, oy }: how the last path drawing maps world units to pixels
 let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre); null = fit to the graph's ticks
+// One recording is the focus (red-green gain, numbers) and one the comparison (own colour, dark to bright,
+// numbers); the rest are plain. Ids; the defaults are the reference and the second pick.
+let pathFocus = null;
+let pathCmp = null;
 const PATH_WHOLE_KEY = 'strafe-review-path-whole'; // shared with the main page
 
 // Rows of a recording the path fits and draws bright: those in the graph's ticks (by aligned tick), or
@@ -795,6 +803,51 @@ const PATH_WHOLE_KEY = 'strafe-review-path-whole'; // shared with the main page
 function pathIn(r) {
 	if ($('path-whole').checked) return () => true;
 	return (i) => r.gd.x[i] >= view.x0 && r.gd.x[i] <= view.x1;
+}
+
+// Same scale as the main page, drill page and in-game line: red at 60 % and under, green at 95 % and over
+function gainColor(p) {
+	if (!Number.isFinite(p)) return C.muted;
+	const t = Math.max(0, Math.min(1, (p - 60) / 35));
+	const mix = (a, b) => Math.round(a + (b - a) * t);
+	return `rgb(${mix(0xff, 0x7b)},${mix(0x5c, 0xd8)},${mix(0x5c, 0x8f)})`;
+}
+
+// Focus / Compare buttons per recording, above the path. Picking the other role's recording swaps them.
+function showPathRoles() {
+	const box = $('path-roles');
+	box.replaceChildren();
+	for (const r of shown) {
+		const row = document.createElement('span');
+		row.className = 'role';
+		const sw = document.createElement('span');
+		sw.className = 'sw';
+		sw.style.background = r.color;
+		const t = document.createElement('span');
+		t.textContent = `${labelText(r.head)} · ${when(r.head.started)}`;
+		const btn = (text, on, pick) => {
+			const b = document.createElement('button');
+			b.textContent = text;
+			b.classList.toggle('on', on);
+			b.onclick = () => {
+				pick();
+				showPathRoles();
+				draw();
+			};
+			return b;
+		};
+		const f = btn('Focus', r.id === pathFocus, () => {
+			if (pathCmp === r.id) pathCmp = pathFocus;
+			pathFocus = r.id;
+		});
+		const c = btn('Compare', r.id === pathCmp, () => {
+			if (pathFocus === r.id) pathFocus = pathCmp;
+			pathCmp = pathCmp === r.id ? null : r.id;
+		});
+		c.title = 'Click again for none';
+		row.append(sw, t, f, c);
+		box.append(row);
+	}
 }
 
 function drawPath() {
@@ -851,38 +904,68 @@ function drawPath() {
 	$('path-dist').append('units');
 	g.lineCap = 'round';
 	g.lineJoin = 'round';
-	// the reference last, so it is on top; dimmed rows first, under the bright ones
+	// plain ones first, then the comparison, the focus on top; dimmed rows under the bright ones
+	const role = (r) => (r.id === pathFocus ? 2 : r.id === pathCmp ? 1 : 0);
+	const order = [...shown.keys()].sort((a, b) => role(shown[a]) - role(shown[b]) || b - a);
+	const colOf = (r) => {
+		const k = role(r);
+		if (!k) return () => r.color;
+		const pct = r.path.pct;
+		return k === 2 ? (i) => (r.d.ground[i] ? C.muted : gainColor(pct[i])) : (i) => gainShade(r.d.ground[i] ? NaN : pct[i], r.color);
+	};
 	for (const dim of [true, false]) {
-		for (let k = shown.length - 1; k >= 0; k--) {
+		for (const k of order) {
 			const r = shown[k];
 			const { x, y, brk } = r.path;
-			g.strokeStyle = r.color;
-			g.globalAlpha = dim ? 0.22 : 1;
-			g.lineWidth = dim ? 1.5 : k === 0 ? 3 : 2.2;
-			g.beginPath();
+			const col = colOf(r);
+			const rk = role(r);
+			// one stroke per run of rows with the same colour
+			let run = null;
+			const flush = () => {
+				if (!run) return;
+				g.strokeStyle = run;
+				g.stroke();
+				run = null;
+			};
+			g.globalAlpha = dim ? 0.22 : rk ? 1 : 0.7;
+			g.lineWidth = dim ? 1.5 : rk === 2 ? 3 : rk === 1 ? 2.4 : 1.6;
 			for (let i = 1; i < r.d.n; i++) {
-				if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1]) || !ins[k](i) !== dim) continue;
-				g.moveTo(ox + x[i - 1] * s, oy - y[i - 1] * s);
+				if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1]) || !ins[k](i) !== dim) {
+					flush();
+					continue;
+				}
+				const c = col(i);
+				if (run !== c) {
+					flush();
+					run = c;
+					g.beginPath();
+					g.moveTo(ox + x[i - 1] * s, oy - y[i - 1] * s);
+				}
 				g.lineTo(ox + x[i] * s, oy - y[i] * s);
 			}
-			g.stroke();
+			flush();
 		}
 	}
 	g.globalAlpha = 1;
-	// the reference's takeoffs with their jump numbers when there's room
-	const ref = shown[0];
-	const { x, y } = ref.path;
-	const tk = ref.jumps.filter((j) => j.num && j.s <= ref.stats.endIdx && ins[0](j.s) && Number.isFinite(x[j.s]));
+	// takeoffs with jump numbers: the focus's on the right in white, the comparison's on the left in its colour
 	g.font = '600 11px system-ui, sans-serif';
-	g.fillStyle = C.text;
-	for (const j of tk) {
-		const X = ox + x[j.s] * s;
-		const Y = oy - y[j.s] * s;
-		g.beginPath();
-		g.arc(X, Y, 3, 0, 2 * Math.PI);
-		g.fill();
-		if (tk.length <= 40) g.fillText(String(j.num), X + 5, Y - 5);
+	for (const [k, r] of shown.entries()) {
+		const rk = role(r);
+		if (!rk) continue;
+		const { x, y } = r.path;
+		const tk = r.jumps.filter((j) => j.num && j.s <= r.stats.endIdx && ins[k](j.s) && Number.isFinite(x[j.s]));
+		g.fillStyle = rk === 2 ? C.text : r.color;
+		g.textAlign = rk === 2 ? 'left' : 'right';
+		for (const j of tk) {
+			const X = ox + x[j.s] * s;
+			const Y = oy - y[j.s] * s;
+			g.beginPath();
+			g.arc(X, Y, 3, 0, 2 * Math.PI);
+			g.fill();
+			if (tk.length <= 40) g.fillText(String(j.num), rk === 2 ? X + 5 : X - 5, Y - 5);
+		}
 	}
+	g.textAlign = 'left';
 	// timer start (every path's (0, 0)) and each run end in its colour
 	const ring = (X, Y, col, text) => {
 		g.strokeStyle = col;
