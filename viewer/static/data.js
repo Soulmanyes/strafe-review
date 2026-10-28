@@ -26,7 +26,30 @@ function whoseRun(h) {
 function parse(a) {
 	const ix = {};
 	a.cols.forEach((c, i) => (ix[c] = i));
-	const lines = a.rows ? a.rows.split(';') : [];
+	let lines = a.rows ? a.rows.split(';') : [];
+	// Rows before the last teleport ahead of the timer start aren't this run (a replay opens with the end of
+	// the player's previous run, then a teleport into the start zone): drop them, and move preRows with them.
+	// Same teleport rule as findJumps(). a.rows is rewritten too, so parsing the same object again is a no-op.
+	{
+		const p = Math.min(a.preRows || 0, lines.length - 1);
+		const sp = (ln) => {
+			const v = ln.split(',');
+			return [+v[ix.tick], Math.hypot(+v[ix.vx], +v[ix.vy])];
+		};
+		let tp = -1;
+		let [t0, s0] = p > 0 ? sp(lines[0]) : [0, 0];
+		for (let i = 1; i <= p; i++) {
+			const [t1, s1] = sp(lines[i]);
+			if (t1 - t0 === 1 && ((s0 > 100 && s1 < 1) || (s0 < 1 && s1 > 100))) tp = i;
+			[t0, s0] = [t1, s1];
+		}
+		if (tp > 0) {
+			lines = lines.slice(tp);
+			a.rows = lines.join(';');
+			a.preRows = p - tp;
+			a.droppedRows = (a.droppedRows || 0) + tp;
+		}
+	}
 	const n = lines.length;
 	const want = ['tick', 'gain', 'ideal', 'ratio', 'right', 'vx', 'vy', 'vz', 'yaw', 'buttons'];
 	const d = { n };
@@ -234,6 +257,8 @@ function runEnd(a, d) {
 // velocity at the timer start is used.
 // Returns { x, y, brk, turn }: x and y in units after the turn (NaN = no position), brk[i] = 1 when row
 // i isn't joined to row i - 1, turn = the angle added to world directions (radians, e.g. for the yaw).
+const PATH_MAX_GAP = 5;
+
 function buildPath(d, interval, preRows) {
 	const n = d.n;
 	const x = new Float64Array(n).fill(NaN);
@@ -248,6 +273,9 @@ function buildPath(d, interval, preRows) {
 		return (a > 100 && b < 1) || (a < 1 && b > 100);
 	};
 	const step = (i) => interval * (d.gap[i] + 1);
+	// over more than a few missed ticks the straight guess is too rough to draw (one replay lost 115 ticks):
+	// the position still moves on, but no line is drawn across
+	const hole = (i) => (d.gap[i] > PATH_MAX_GAP ? 1 : 0);
 	x[p] = 0;
 	y[p] = 0;
 	brk[p] = 1;
@@ -260,13 +288,14 @@ function buildPath(d, interval, preRows) {
 		}
 		x[i] = x[i - 1] + d.vx[i] * step(i);
 		y[i] = y[i - 1] + d.vy[i] * step(i);
+		brk[i] = hole(i);
 	}
 	// backwards from the timer start: row i - 1 = row i minus row i's move
 	for (let i = p; i > 0; i--) {
 		if (tp(i)) break;
 		x[i - 1] = x[i] - d.vx[i] * step(i);
 		y[i - 1] = y[i] - d.vy[i] * step(i);
-		brk[i] = 0;
+		brk[i] = hole(i);
 		brk[i - 1] = 1;
 	}
 	let far = p;
