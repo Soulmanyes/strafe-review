@@ -15,6 +15,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -28,6 +29,7 @@ import install
 PORT = int(os.environ.get("STRAFE_REVIEW_PORT", "8765"))  # the variable is for tests
 URL = f"http://127.0.0.1:{PORT}/"
 SERVE = "--serve"  # internal: the background copy the launch option starts
+START_WAIT = 10  # seconds the launch option waits for the server it started, after the game
 
 
 def serving():
@@ -91,11 +93,16 @@ def game_env():
 
 def launch(game_cmd):
     try_install()
-    if not serving():
+    started = not serving()
+    if started:
         start_background()
     status = subprocess.call(game_cmd, env=game_env())
-    if serving():
-        webbrowser.open(URL)
+    # a server started just now may still be starting if the game quit at once (a crash on launch)
+    for _ in range(START_WAIT * 2 if started else 1):
+        if serving():
+            webbrowser.open(URL)
+            break
+        time.sleep(0.5)
     return status
 
 
