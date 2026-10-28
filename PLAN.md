@@ -411,6 +411,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Notes and tags** per attempt (for example "new sens"), with a filter by tag.
 - **Filters** by map, tickrate, style (normal, sideways, HSW) and finished or failed.
 - **PNG export** of a graph or jump view.
+  - **Next (owner, 2026-10-28):** export page sections as screenshots, one image per section: Run stats in one, the graphs in one, the path in one. Not built yet; how (button per section, copy vs download, which pages besides the main one) still to settle.
 - **Sort and search in the recording lists (owner, 2026-10-28):** on both the main page's sidebar list and the /compare picker list, own runs and replays alike.
   - Sort: for example newest first, time, jump-1 gain, player name. Kept in localStorage.
   - Search: a text box matching player name, map, tags and note. It stacks with the existing filters.
