@@ -10,9 +10,11 @@ Status: recorder, collector and viewer work. The viewer has three pages:
 
 In game, the recorder shows a 3-row line after jump 1 lands: landing speed, gain % per strafe and the biggest mistake.
 
-Replays played to the end count as finishes.
+Replays played to the end count as finishes. Bonus tracks are recorded and listed per bonus ("surf_artois: b1"), and 66-tick bhop works next to 66-tick surf.
 
-Next: PNG export, progress over time, 66-tick surf and bhop bonuses. See [PLAN.md](PLAN.md) and the feature plan doc with drawings:
+Run stats, graphs and paths on `/` and `/compare` each have Copy and Save buttons: Copy puts a picture of that section on the clipboard, Save downloads it as a PNG.
+
+Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) and the feature plan doc with drawings:
 (link removed)
 
 ## Setup (so far)
