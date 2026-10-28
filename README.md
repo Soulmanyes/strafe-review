@@ -14,8 +14,7 @@ Replays played to the end count as finishes. Bonus tracks are recorded and liste
 
 Run stats, graphs and paths on `/` and `/compare` each have Copy and Save buttons: Copy puts a picture of that section on the clipboard, Save downloads it as a PNG.
 
-Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) and the feature plan doc with drawings:
-(link removed)
+Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md).
 
 ## Setup on Linux (so far)
 
