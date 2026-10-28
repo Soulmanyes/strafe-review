@@ -487,6 +487,17 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Owner test (2026-10-28, owner's pick):** the recorder now also saves `wx`, `wy` = `GetMoveHudData().wishVel` x/y (the game's own wish velocity, as the cgaz HUD uses it), appended to the end of the columns so old files still parse. `node viewer/check_ssj.js` compares, per air row, p from wishVel with p from the velocity change at wishVel row offsets -1/0/+1, and the per-jump SSJ % both ways. Checked on a fake file with wishVel made from the velocity change: median p difference 0.1 at offset 0, jumps within 0.3 %. Waits on the owner: `panorama_reload`, some runs including deliberately over-turned jumps at high speed, then run the checker.
 - **Not tested against a real CS:S server.** Momentum has no SSJ-equivalent number (LastJump has speedGain, yawRatio, efficiency, sync). A real check needs the owner's CS:S SSJ numbers for comparison.
 
+## Next: fixes before the CS:S gain test (owner, 2026-10-28, somewhat urgent)
+
+Do these before the owner's SSJ wishVel test (to-do `strafe-review-ssj-test`).
+
+1. **Graph readout overflows its box.** The numbers shown for the mouse position on the graph (`#readout`) run past the box. Make them wrap or fit; check /compare's readout too.
+2. **Remove comparison from the main run page.** The "Compare page" button is enough. Remove the Compare picker, the align select and its hint, the ghost chips in the header, the dashed ghost in the lanes, ghost text in the jump strip, the pink ghost path with its jump numbers, ghost values in the hover readout and the pink column in Run stats. The "Compare page" button opens /compare with the open attempt as the reference, since there is no ghost any more to bring along.
+3. **Everything the main page compared must be on /compare.** Known gaps to close:
+   - Quick picks: fastest own finish, best own jump 1, top replay (main page presets; /compare only has the list).
+   - Run stats: /compare's stats table has only the v1 groups. Add every Run stats row (CS:S gain, speed lost, spread, left/right, band shares, turn speed, strafe length, swaps incl. gain dip, keys, air time, distance), from the same `summarize()` and row definitions so both pages show the same numbers.
+   - Check the rest is already there and matches: per-jump gain in the jump strip, hover readout values per recording, both align modes, path gain colouring (Focus/Compare), and the notes (gain rebuilt from speed, replay keys not drawn, matched jump count).
+
 ## Later / undecided
 
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.
