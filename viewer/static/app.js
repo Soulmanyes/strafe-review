@@ -1229,6 +1229,7 @@ function drawPath() {
 	const g = size($('path-base'), W, H);
 	size($('path-over'), W, H);
 	pathFit = null;
+	$('path-dist').textContent = '';
 	g.font = '12px system-ui, sans-serif';
 	g.fillStyle = COL.muted;
 	if (!cur) {
@@ -1259,6 +1260,8 @@ function drawPath() {
 	const ox = W / 2 - ((x0 + x1) / 2) * s;
 	const oy = H / 2 + ((y0 + y1) / 2) * s;
 	pathFit = { s, ox, oy, r0, r1 };
+	const runDist = pathDistance(cur.path, Math.min(cur.head.preRows || 0, d.n - 1), runEnd(cur.head, d));
+	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
 	const X = (i) => ox + x[i] * s;
 	const Y = (i) => oy - y[i] * s;
 	// one stroke per run of rows with the same colour; rows outside the graph's ticks are dimmed
@@ -1353,7 +1356,7 @@ function drawPathHover() {
 	}
 	const i = hoverIdx;
 	if (i < 0 || !Number.isFinite(x[i])) return;
-	const a = (cur.d.yaw[i] * Math.PI) / 180;
+	const a = (cur.d.yaw[i] * Math.PI) / 180 + cur.path.turn;
 	g.strokeStyle = COL.hover;
 	g.lineWidth = 2;
 	g.beginPath();

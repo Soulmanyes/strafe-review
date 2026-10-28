@@ -227,8 +227,10 @@ function runEnd(a, d) {
 // (a row after missed ticks counts for all of them). The timer start is (0, 0). A teleport (speed from
 // 100+ to standstill or back in one tick) breaks the line: after it the path starts again at (0, 0), and
 // rows before the last teleport ahead of the timer start (a replay's previous run) get no position.
-// Returns { x, y, brk }: world x and y in units (NaN = no position), brk[i] = 1 when row i isn't joined
-// to row i - 1.
+// The path is turned so the way out of the start zone points up (+y): the direction from the timer start
+// to the first row 32+ units away, or the velocity at the timer start when it never gets that far.
+// Returns { x, y, brk, turn }: x and y in units after the turn (NaN = no position), brk[i] = 1 when row
+// i isn't joined to row i - 1, turn = the angle added to world directions (radians, e.g. for the yaw).
 function buildPath(d, interval, preRows) {
 	const n = d.n;
 	const x = new Float64Array(n).fill(NaN);
@@ -264,7 +266,35 @@ function buildPath(d, interval, preRows) {
 		brk[i] = 0;
 		brk[i - 1] = 1;
 	}
-	return { x, y, brk };
+	let hx = d.vx[p];
+	let hy = d.vy[p];
+	for (let i = p + 1; i < n && !brk[i]; i++) {
+		if (Math.hypot(x[i], y[i]) >= 32) {
+			hx = x[i];
+			hy = y[i];
+			break;
+		}
+	}
+	const turn = hx || hy ? Math.PI / 2 - Math.atan2(hy, hx) : 0;
+	const c = Math.cos(turn);
+	const sn = Math.sin(turn);
+	for (let i = 0; i < n; i++) {
+		const wx = x[i];
+		x[i] = wx * c - y[i] * sn;
+		y[i] = wx * sn + y[i] * c;
+	}
+	return { x, y, brk, turn };
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath };
+// Horizontal distance along the path from row i0 to row i1, in units; teleports and rows with no
+// position add nothing
+function pathDistance(path, i0, i1) {
+	let s = 0;
+	for (let i = Math.max(i0 + 1, 1); i <= i1; i++) {
+		if (path.brk[i] || !Number.isFinite(path.x[i]) || !Number.isFinite(path.x[i - 1])) continue;
+		s += Math.hypot(path.x[i] - path.x[i - 1], path.y[i] - path.y[i - 1]);
+	}
+	return s;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance };
