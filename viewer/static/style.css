@@ -237,6 +237,10 @@ h2 { font-size: 15px; margin: 0; }
 #path-box { position: relative; height: 720px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
 #path-box canvas { position: absolute; left: 0; top: 0; }
 #path-over { cursor: crosshair; }
+#path-over.drag { cursor: grabbing; }
+.path-zoom { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.path-zoom button { min-width: 32px; padding: 3px 8px; font: 600 14px system-ui, sans-serif; }
+.path-zoom button:disabled { opacity: 0.4; cursor: default; }
 
 #mistakes-list { max-height: 360px; overflow-y: auto; padding-right: 4px; }
 

@@ -72,13 +72,18 @@
 		<div class="sec-head">
 			<h2>Path from above</h2>
 			<span id="path-dist" class="path-dist" title="Horizontal distance from the timer start to the run end, and over the ticks shown in the graph (teleports add nothing)"></span>
-			<span class="muted">Built up from speed, so the shape is right but not exact. Turned so the way out of the start zone points up. Fits the ticks shown in the graph; the rest is dimmed.</span>
+			<span class="muted">Built up from speed, so the shape is right but not exact. Turned so the way out of the start zone points up. Fits the ticks shown in the graph (the rest is dimmed) until you zoom or drag it.</span>
 			<label class="cmp" title="Fit the whole path instead of the ticks shown in the graph"><input type="checkbox" id="path-whole"> Whole path</label>
-			<span class="hint">Colour: gain % of ideal (5-tick), red 60 % and under, green 95 % and over; grey = ground · hover: graph cursor · click: zoom to that jump</span>
+			<span class="hint">Colour: gain % of ideal (5-tick), red 60 % and under, green 95 % and over; grey = ground · hover: graph cursor · click: zoom to that jump · drag: pan</span>
 		</div>
 		<div id="path-box">
 			<canvas id="path-base"></canvas>
 			<canvas id="path-over"></canvas>
+			<div class="path-zoom">
+				<button id="path-in" title="Zoom in">+</button>
+				<button id="path-out" title="Zoom out">−</button>
+				<button id="path-reset" title="Back to the fit (follows the graph again)" disabled>Reset</button>
+			</div>
 		</div>
 	</section>
 	<section id="mistakes">

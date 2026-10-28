@@ -66,6 +66,7 @@ let selMistake = null; // the mistake picked in the list, outlined on the graph
 let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for attempts that didn't record theirs
 let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 let pathFit = null; // { s, ox, oy, r0, r1 }: how the last path drawing maps world units to pixels
+let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre); null = fit to pathRange()
 let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how }: the comparison drawn dashed pink
 const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps }
 const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
@@ -387,6 +388,7 @@ async function open(dir, id) {
 	const d = parse(a);
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: a.postRows ? d.n - 1 - a.postRows : d.n - 1 };
+	pathView = null;
 	cur.path = { ...buildPath(d, a.interval, a.preRows), pct: pathPct(d, jumps) };
 	location.hash = `${dir}/${id}`;
 	showCm360();
@@ -1256,9 +1258,16 @@ function drawPath() {
 	}
 	const PAD = 24;
 	// world y points up, so it is flipped on the canvas; at least 64 units across, so a standstill doesn't blow up
-	const s = Math.min((W - 2 * PAD) / Math.max(x1 - x0, 64), (H - 2 * PAD) / Math.max(y1 - y0, 64));
-	const ox = W / 2 - ((x0 + x1) / 2) * s;
-	const oy = H / 2 + ((y0 + y1) / 2) * s;
+	// after a zoom button or a drag the view stays put (pathView) until reset, instead of following the graph
+	const v = pathView || {
+		s: Math.min((W - 2 * PAD) / Math.max(x1 - x0, 64), (H - 2 * PAD) / Math.max(y1 - y0, 64)),
+		cx: (x0 + x1) / 2,
+		cy: (y0 + y1) / 2,
+	};
+	const s = v.s;
+	const ox = W / 2 - v.cx * s;
+	const oy = H / 2 + v.cy * s;
+	$('path-reset').disabled = !pathView;
 	pathFit = { s, ox, oy, r0, r1 };
 	const runDist = pathDistance(cur.path, Math.min(cur.head.preRows || 0, d.n - 1), runEnd(cur.head, d));
 	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
@@ -1369,11 +1378,12 @@ function drawPathHover() {
 	g.fill();
 }
 
-// Nearest row to a point on the path canvas, among the rows it fits, within 14 px
+// Nearest row to a point on the path canvas, within 14 px: among the rows it fits, or any row once zoomed/panned
 function pathRowAt(mx, my) {
 	if (!cur || !pathFit) return -1;
 	const { x, y } = cur.path;
-	const { s, ox, oy, r0, r1 } = pathFit;
+	const { s, ox, oy } = pathFit;
+	const [r0, r1] = pathView ? [0, cur.d.n - 1] : [pathFit.r0, pathFit.r1];
 	let best = -1;
 	let bd = 14 * 14;
 	for (let i = r0; i <= r1; i++) {
@@ -1388,7 +1398,54 @@ function pathRowAt(mx, my) {
 	return best;
 }
 
+// The current fit as a pathView, to zoom or pan from
+function pathViewNow() {
+	const box = $('path-box');
+	const { s, ox, oy } = pathFit;
+	return { s, cx: (box.clientWidth / 2 - ox) / s, cy: (oy - box.clientHeight / 2) / s };
+}
+
+function pathZoom(f) {
+	if (!cur || !pathFit) return;
+	const v = pathViewNow();
+	pathView = { ...v, s: v.s * f };
+	draw();
+}
+$('path-in').onclick = () => pathZoom(1.5);
+$('path-out').onclick = () => pathZoom(1 / 1.5);
+$('path-reset').onclick = () => {
+	pathView = null;
+	draw();
+};
+
+// Drag pans the path; a drag of more than 4 px is not a click
+let pathDrag = null; // { mx, my, v, moved }
+$('path-over').addEventListener('mousedown', (e) => {
+	if (e.button !== 0 || !cur || !pathFit) return;
+	e.preventDefault();
+	pathDrag = { mx: e.clientX, my: e.clientY, v: pathViewNow(), moved: false };
+});
+window.addEventListener('mousemove', (e) => {
+	if (!pathDrag) return;
+	const dx = e.clientX - pathDrag.mx;
+	const dy = e.clientY - pathDrag.my;
+	if (!pathDrag.moved && dx * dx + dy * dy <= 16) return;
+	pathDrag.moved = true;
+	$('path-over').classList.add('drag');
+	const { s, cx, cy } = pathDrag.v;
+	pathView = { s, cx: cx - dx / s, cy: cy + dy / s };
+	draw();
+});
+window.addEventListener('mouseup', () => {
+	if (!pathDrag) return;
+	$('path-over').classList.remove('drag');
+	// the click event comes right after this mouseup; leave the flag for it to see
+	if (pathDrag.moved) setTimeout(() => (pathDrag = null));
+	else pathDrag = null;
+});
+
 $('path-over').addEventListener('mousemove', (e) => {
+	if (pathDrag) return;
 	const rect = e.currentTarget.getBoundingClientRect();
 	hoverIdx = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
 	drawHover();
@@ -1399,6 +1456,7 @@ $('path-over').addEventListener('mouseleave', () => {
 });
 // Click: zoom the graph to that jump, or centre it on that tick when it's on the ground
 $('path-over').addEventListener('click', (e) => {
+	if (pathDrag?.moved) return;
 	const rect = e.currentTarget.getBoundingClientRect();
 	const i = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
 	if (i < 0) return;
@@ -1415,6 +1473,7 @@ $('path-over').addEventListener('click', (e) => {
 $('path-whole').checked = localStorage.getItem(PATH_WHOLE_KEY) === '1';
 $('path-whole').onchange = () => {
 	localStorage.setItem(PATH_WHOLE_KEY, $('path-whole').checked ? '1' : '0');
+	pathView = null;
 	draw();
 };
 new ResizeObserver(() => draw()).observe($('path-box'));
