@@ -26,7 +26,7 @@ function pWish(d, i, k) {
 	if (!(l > 0.1)) return null;
 	return (d.vx[i - 1] * d.wx[k] + d.vy[i - 1] * d.wy[k]) / l;
 }
-const score = (p) => (p === null ? 0 : p < A ? (A - Math.abs(p)) / A : 0);
+const score = (p) => (p === null ? 1 : p < A ? (A - Math.abs(p)) / A : 0); // no key: 1, as SSJ scores it
 
 let files = 0;
 for (const m of fs.readdirSync(store)) {

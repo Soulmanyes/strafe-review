@@ -194,7 +194,7 @@ const SSJ_NEXT_MAX = 10; // ground ticks before the next takeoff still counted o
 function ssjRow(d, i, fit, takeoff) {
 	if (i < 1 || i >= d.n || d.gap[i] > 0) return { c: 0, ok: false };
 	const score = (w) => {
-		if (!w) return { c: 0, ok: true }; // no key: scores 0 but counts
+		if (!w) return { c: 1, ok: true }; // no key: SSJ counts it as a synced, perfect tick (measured on a CS:S server)
 		const p = d.vx[i - 1] * w[0] + d.vy[i - 1] * w[1];
 		return { c: p < AIR_ADD ? (AIR_ADD - Math.abs(p)) / AIR_ADD : 0, ok: true };
 	};
@@ -217,6 +217,9 @@ function ssjRow(d, i, fit, takeoff) {
 	// velocity, scored negative by SSJ); otherwise a teleport, booster or wall, skipped
 	if (m > SSJ_MAX_DV && (!lagged || (dx * lagged[0] + dy * lagged[1]) / m < SSJ_ALIGN_COS)) return { c: 0, ok: false };
 	if (recorded) return score(wish);
+	const b = d.buttons[i];
+	const keyed = (b & BIT.FORWARD ? 1 : 0) - (b & BIT.BACK ? 1 : 0) || (b & BIT.MOVERIGHT ? 1 : 0) - (b & BIT.MOVELEFT ? 1 : 0);
+	if (!keyed) return score(null);
 	return { c: (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD, ok: true };
 }
 
@@ -232,7 +235,8 @@ function ssjJump(d, j, next, fit) {
 		n++;
 	};
 	for (let i = j.s + 1; i <= Math.min(j.e, d.n - 1); i++) add(ssjRow(d, i, fit, false));
-	if (next && next.s - j.e <= SSJ_NEXT_MAX) add(ssjRow(d, next.s, fit, true));
+	// in CS:S the landing tick is the next jump's tick (no ground row between), already counted above
+	if (next && next.s > j.e && next.s - j.e <= SSJ_NEXT_MAX) add(ssjRow(d, next.s, fit, true));
 	return { sum, n };
 }
 
