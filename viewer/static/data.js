@@ -193,19 +193,30 @@ const SSJ_NEXT_MAX = 10; // ground ticks before the next takeoff still counted o
 
 function ssjRow(d, i, fit, takeoff) {
 	if (i < 1 || i >= d.n || d.gap[i] > 0) return { c: 0, ok: false };
-	const lagged = fit.err <= SSJ_FIT_MAX && i + fit.lag < d.n ? wishDir(d, i + fit.lag, i) : null;
-	if (takeoff) {
-		if (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n) return { c: 0, ok: false };
-		if (!lagged) return { c: 0, ok: true };
-		const p = d.vx[i - 1] * lagged[0] + d.vy[i - 1] * lagged[1];
+	const score = (w) => {
+		if (!w) return { c: 0, ok: true }; // no key: scores 0 but counts
+		const p = d.vx[i - 1] * w[0] + d.vy[i - 1] * w[1];
 		return { c: p < AIR_ADD ? (AIR_ADD - Math.abs(p)) / AIR_ADD : 0, ok: true };
+	};
+	// recordings since 2026-10-28 carry the game's own wish velocity: its direction is exact for every row
+	// (checked against the velocity change: p within 0.02 u/s), so no angles are needed
+	const wl = Math.hypot(d.wx[i], d.wy[i]);
+	const recorded = Number.isFinite(wl);
+	const wish = recorded && wl > 0.1 ? [d.wx[i] / wl, d.wy[i] / wl] : null;
+	const lagged = recorded ? wish : fit.err <= SSJ_FIT_MAX && i + fit.lag < d.n ? wishDir(d, i + fit.lag, i) : null;
+	if (takeoff) {
+		if (!recorded && (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n)) return { c: 0, ok: false };
+		return score(lagged);
 	}
 	const dx = d.vx[i] - d.vx[i - 1];
 	const dy = d.vy[i] - d.vy[i - 1];
 	const m = Math.hypot(dx, dy);
+	// velocity wiped to a standstill: a reset or teleport (an air move never lands on zero), skipped
+	if (m > 5 && Math.hypot(d.vx[i], d.vy[i]) < 0.5) return { c: 0, ok: false };
 	// over 60 u/s: an air move only when it lines up with the keys' wishdir (turning far ahead of the
 	// velocity, scored negative by SSJ); otherwise a teleport, booster or wall, skipped
 	if (m > SSJ_MAX_DV && (!lagged || (dx * lagged[0] + dy * lagged[1]) / m < SSJ_ALIGN_COS)) return { c: 0, ok: false };
+	if (recorded) return score(wish);
 	return { c: (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD, ok: true };
 }
 
