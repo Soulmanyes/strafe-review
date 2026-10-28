@@ -5,8 +5,8 @@
 # install.py (in the repo root) links it into ~/.local/bin.
 # The server is started as its own systemd user unit, outside Steam's process tree, so it
 # keeps running after the game quits (review after playing) and Steam doesn't wait for it.
-# When the game quits, the page opens in the default browser, ready to review (the server
-# itself is started with --no-browser, so no tab pulls you out of the game while it loads).
+# The page opens in the default browser as the game starts, so it updates live during play
+# (the server itself is started with --no-browser; this script opens the page once it answers).
 # Output: journalctl --user -u strafe-review. Stop it: systemctl --user stop strafe-review.
 # If it is already running (the unit, or a server started by hand on port 8765), the new
 # copy finds the port taken and exits.
@@ -27,12 +27,17 @@ if ! systemctl --user is-active --quiet strafe-review; then
 		python3 "$SERVER" --port "$PORT" --no-browser || echo "strafe-review-run: could not start $SERVER" >&2
 fi
 
-"$@"
-status=$?
+# open the page once a server answers (this one, or one started by hand on the port); a server
+# started just now may need a moment, so wait up to 10 s in the background while the game starts
+(
+	for _ in $(seq 20); do
+		if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+			systemd-run --user --quiet --collect "${env_args[@]}" xdg-open "http://127.0.0.1:$PORT/" ||
+				echo "strafe-review-run: could not open the page" >&2
+			exit
+		fi
+		sleep 0.5
+	done
+) &
 
-# open the page only if a server answers (this one, or one started by hand on the port)
-if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
-	systemd-run --user --quiet --collect "${env_args[@]}" xdg-open "http://127.0.0.1:$PORT/" ||
-		echo "strafe-review-run: could not open the page" >&2
-fi
-exit "$status"
+"$@"

@@ -62,7 +62,8 @@ If attempts don't show up, send a screenshot of the "Setup check" box and the fi
    - Start the game from Steam. Does a console window show up and stay over or behind the game?
      (It only shows the two install lines while the game runs; that is normal. The server itself
      runs in the background without a window.)
-   - Play an attempt or two, then quit the game. Does the review page open?
+   - Does the review page open while the game starts? Play an attempt or two: do they show up?
+   - Quit the game.
    - After quitting, does Steam still show Momentum Mod as "Running" or "Stop"?
    - Is strafe-review.exe still in Task Manager? (It's meant to stay running in the background,
      so the page keeps working after the game.)

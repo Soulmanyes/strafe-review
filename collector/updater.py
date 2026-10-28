@@ -20,7 +20,7 @@ from pathlib import Path
 
 import steam
 
-VERSION = "1.0.0"  # bump in the same commit as the release tag
+VERSION = "1.0.1"  # bump in the same commit as the release tag
 REPO = "Soulmanyes/strafe-review"
 ASSET = "strafe-review-windows.zip"
 EXE = "strafe-review.exe"

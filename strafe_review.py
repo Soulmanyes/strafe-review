@@ -5,7 +5,7 @@
                                       page and open it in the browser (keep the window open while
                                       playing; closing it stops collecting)
     strafe-review.exe %command%       as a Steam launch option: install, start the server in the
-                                      background, run the game, open the page when it quits
+                                      background, open the page, run the game
 
 Everything it prints also goes to strafe-review.log in %LOCALAPPDATA%\\strafe-review (the background
 copy's only output). If a copy is already serving, a double-click only opens the page. The server
@@ -16,6 +16,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -35,7 +36,7 @@ SERVE = "--serve"  # internal: the background copy the launch option starts
 RESTARTED = "--restarted"  # internal: a double-click copy started again after an update (no new tab)
 LOG = steam.data_dir() / "strafe-review.log"
 LOG_MAX = 1 << 20  # bytes; a longer log is started over
-START_WAIT = 10  # seconds the launch option waits for the server it started, after the game
+START_WAIT = 10  # seconds the launch option waits for the server it started before opening the page
 
 
 class Tee:
@@ -149,18 +150,25 @@ def game_env():
     return env
 
 
+def open_when_serving(wait):
+    for _ in range(wait * 2 or 1):
+        if serving():
+            webbrowser.open(URL)
+            return
+        time.sleep(0.5)
+
+
 def launch(game_cmd):
     try_install()
     started = not serving()
     if started:
         start_background()
+    # the page opens while the game starts, so it updates live during play; a server started just
+    # now may need a moment before it answers
+    opener = threading.Thread(target=open_when_serving, args=(START_WAIT if started else 0,))
+    opener.start()
     status = subprocess.call(game_cmd, env=game_env())
-    # a server started just now may still be starting if the game quit at once (a crash on launch)
-    for _ in range(START_WAIT * 2 if started else 1):
-        if serving():
-            webbrowser.open(URL)
-            break
-        time.sleep(0.5)
+    opener.join()
     return status
 
 

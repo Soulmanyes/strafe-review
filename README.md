@@ -29,7 +29,7 @@ Everything stays on your PC: the page runs at http://127.0.0.1:8765/ and the onl
 1. Download `strafe-review-windows.zip` from the [latest release](https://github.com/Soulmanyes/strafe-review/releases/latest) and unzip it to a folder you keep (the Steam launch option points at it).
 2. Double-click `strafe-review.exe`. Windows Defender or SmartScreen may warn, because the exe isn't signed. It finds Momentum, installs the recorder and the `autoexec.cfg` block (see below), then opens the review page. Keep its console window open while playing, or click **Stop** on the page to end it.
 3. Restart Momentum once, so it reads the new `autoexec.cfg` lines.
-4. Or let Steam start it with the game: Momentum Mod > Properties > Launch options: `"C:\path\to\strafe-review.exe" %command%`. It then runs in the background, opens the page when the game quits, and keeps running for review until you click **Stop**.
+4. Or let Steam start it with the game: Momentum Mod > Properties > Launch options: `"C:\path\to\strafe-review.exe" %command%`. It then runs in the background, opens the page as the game starts, and keeps running for review until you click **Stop**.
 
 Attempts are kept in `%LOCALAPPDATA%\strafe-review\attempts`, and everything it prints also goes to `%LOCALAPPDATA%\strafe-review\strafe-review.log`. `WINDOWS.txt` in the zip has the same steps.
 
@@ -37,7 +37,7 @@ Attempts are kept in `%LOCALAPPDATA%\strafe-review\attempts`, and everything it 
 
 1. Clone this repo and keep it where it is; the launcher runs from it.
 2. `python install.py` finds Momentum (or pass `--game DIR`, or set `MOMENTUM_DIR`), installs the recorder and the `autoexec.cfg` block, and links `strafe-review-run` into `~/.local/bin`.
-3. Set Momentum Mod's Steam launch options to `strafe-review-run %command%` (it chains with other wrappers, e.g. `strafe-review-run sourceyaw-run %command%`). The game start then starts the server as the systemd user unit `strafe-review`, which keeps running after the game quits; the page opens when the game quits. **Stop** on the page or `systemctl --user stop strafe-review` ends it.
+3. Set Momentum Mod's Steam launch options to `strafe-review-run %command%` (it chains with other wrappers, e.g. `strafe-review-run sourceyaw-run %command%`). The game start then starts the server as the systemd user unit `strafe-review`, which keeps running after the game quits; the page opens as the game starts. **Stop** on the page or `systemctl --user stop strafe-review` ends it.
 4. Restart Momentum once. Or start the server by hand: `python viewer/server.py` (`--port`, `--no-collect` to only serve, `--no-browser`).
 
 Attempts are kept in `~/.local/share/strafe-review/attempts`.

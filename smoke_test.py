@@ -12,7 +12,7 @@ Run by .github/workflows/windows.yml on the Windows build; it runs on Linux too.
 3. Launch option: runs the "game", hands back its exit code, leaves the server running, opens the page.
 4. The page's Stop button (POST /api/stop) ends that background server.
 5. Update: a fake GitHub answers with v99.0.0 and a zip of this exe; a copy of the program in its own
-   folder downloads it, swaps the exe and starts again. The new copy is the same build (1.0.0), so it
+   folder downloads it, swaps the exe and starts again. The new copy is the same build, so it
    must mark v99.0.0 as failed, which keeps auto mode from looping.
 The browser is a stand-in that writes the URL to a file.
 """
