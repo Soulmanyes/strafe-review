@@ -20,6 +20,9 @@ Routes:
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
   /api/mouse                 sensitivity and m_yaw from the game's config.cfg now, for attempts
                              recorded before the recorder stamped them (null if unreadable)
+  /api/status                what the setup looks like, for the page's status box: game folder,
+                             recorder and autoexec.cfg block in place, the log (exists, size,
+                             last change), what the collector has seen, its last error
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
   POST /api/stop             stops this program (the page's Stop button); it starts again with the game
                              or by hand
@@ -68,6 +71,7 @@ MAX_TAGS = 20
 SPECTATE_MIN_AIR = 20  # same as static/data.js
 POLL = 0.5  # seconds between store scans for /api/events
 COLLECT_RETRY = 5  # seconds before the collector thread starts over after an error
+collect_error = None  # {"time", "text"} of the collector thread's last error, for /api/status
 PING = 15  # seconds between keep-alive comments
 
 
@@ -272,6 +276,7 @@ def snapshot(store):
 class Handler(BaseHTTPRequestHandler):
     store = None
     game_cfg = None
+    log = None  # the log the collector reads; None with --no-collect
 
     def send(self, code, body, ctype, extra=None):
         self.send_response(code)
@@ -372,6 +377,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, path.read_bytes(), ctype)
         elif parts == ["api", "events"]:
             return self.events()
+        elif parts == ["api", "status"]:
+            return self.send(200, json.dumps(status(self)).encode(), "application/json")
         elif parts == ["api", "mouse"]:
             return self.send(200, json.dumps(game_mouse(self.game_cfg)).encode(), "application/json")
         elif parts == ["api", "attempts"]:
@@ -388,6 +395,36 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def file_info(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return {"path": str(path), "exists": False}
+    return {"path": str(path), "exists": True, "size": st.st_size, "modified": st.st_mtime}
+
+
+def status(handler):
+    """The setup as this program sees it; every check a "no attempts show up" report needs."""
+    game = MOM_DIR
+    autoexec = game / "cfg" / "autoexec.cfg" if game else None
+    try:
+        block = "// strafe-review begin" in autoexec.read_text(encoding="utf-8", errors="replace")
+    except (OSError, AttributeError):
+        block = False
+    return {
+        "game": str(game) if game else None,
+        "recorder": bool(game) and (game / "custom" / "strafe-review" / "panorama" / "scripts" / "hud" / "strafe-review.ts").is_file(),
+        "autoexecBlock": block,
+        "log": file_info(handler.log) if handler.log else None,
+        "collecting": handler.log is not None,
+        "collector": collector.STATS,
+        "error": collect_error,
+        "store": str(handler.store),
+        "saved": len(collector.known_ids(handler.store)),
+        "now": time.time(),
+    }
+
+
 def collect(log, store):
     """Run the collector for good; an error is printed and the collector starts over, so the page never
     keeps showing while nothing is saved. Starting over is safe: attempts already on disk are skipped."""
@@ -395,7 +432,9 @@ def collect(log, store):
         try:
             collector.run(log, store, once=False)
         except Exception as e:  # noqa: BLE001 - any error, the thread must live on
-            print(f"collector: {type(e).__name__}: {e}, starting over in {COLLECT_RETRY} s", file=sys.stderr, flush=True)
+            global collect_error
+            collect_error = {"time": time.time(), "text": f"{type(e).__name__}: {e}"}
+            print(f"collector: {collect_error['text']}, starting over in {COLLECT_RETRY} s", file=sys.stderr, flush=True)
         time.sleep(COLLECT_RETRY)
 
 
@@ -429,6 +468,7 @@ def main(argv=None):
         # bound before collecting: a busy port means another copy is already collecting
         sys.exit(f"Strafe Review: port {args.port} is in use ({e.strerror}); is it already running?")
     if not args.no_collect:
+        Handler.log = Path(args.log)
         threading.Thread(target=collect, args=(args.log, Handler.store), daemon=True).start()
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Strafe Review viewer on {url} (attempts from {args.store})", flush=True)

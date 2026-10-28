@@ -236,7 +236,10 @@ function renderList() {
 	const box = $('list');
 	const scroll = box.scrollTop; // rebuilt on every open and save; stay where the owner scrolled to
 	box.replaceChildren();
-	if (!list.length) box.textContent = 'No attempts saved yet.';
+	if (!list.length) {
+		box.textContent = 'No attempts saved yet.';
+		showStatus(box);
+	}
 	$('drill-count').textContent = list.filter(isDrill).length;
 	// the open attempt stays listed when it is a hidden drill, not when the filters leave it out
 	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');

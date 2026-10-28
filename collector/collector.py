@@ -29,6 +29,8 @@ LOG = os.path.join(GAME, "yaw.log") if GAME else None  # con_logfile, shared wit
 NOT_FOUND = "Momentum Mod not found in any Steam library; set MOMENTUM_DIR to its momentum folder"
 POLL = 0.25  # seconds between reads when the log has nothing new
 STALE = 600  # seconds after which an attempt without its end line is dropped
+# What run() has seen since it started, for the viewer's status box (/api/status)
+STATS = {"lines": 0, "recorder": 0, "saved": 0, "dropped": 0, "lastLine": None, "lastRecorder": None, "lastSaved": None}
 
 
 def follow(path, once=False):
@@ -100,24 +102,33 @@ def run(log, store, once):
     known = known_ids(store)
     asm = Assembler()
     print(f"collector: reading {log}, saving to {store} ({len(known)} attempts already there)", flush=True)
+    STATS.update(lines=0, recorder=0, saved=0, dropped=0, lastLine=None, lastRecorder=None, lastSaved=None)
     for line in follow(log, once):
         if line is None:
             for b in asm.drop_stale(STALE):
+                STATS["dropped"] += 1
                 print(f"collector: dropped {b}", flush=True)
             continue
+        STATS["lines"] += 1
+        STATS["lastLine"] = time.time()
         text = body(line)
         if text is None:
             continue
+        STATS["recorder"] += 1
+        STATS["lastRecorder"] = time.time()
         got = asm.feed(text)
         if got is None:
             continue
         kind, value = got
         if kind == "broken":
+            STATS["dropped"] += 1
             print(f"collector: dropped {value}", flush=True)
         elif kind == "attempt" and value.get("id") not in known:
             path = save(store, value)
             known.add(value["id"])
             if path:
+                STATS["saved"] += 1
+                STATS["lastSaved"] = time.time()
                 print(f"collector: saved {path}", flush=True)
     for b in asm.leftover():
         print(f"collector: unfinished {b}", flush=True)

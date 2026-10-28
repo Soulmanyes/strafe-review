@@ -23,13 +23,20 @@ What it changes in the game folder:
   (the original is kept as cfg\autoexec.cfg.bak-strafe-review)
 To undo: delete custom\strafe-review and that block.
 
-Attempts are saved in %LOCALAPPDATA%\strafe-review\attempts.
+Attempts are saved in %LOCALAPPDATA%\strafe-review\attempts. Everything the program prints also
+goes to %LOCALAPPDATA%\strafe-review\strafe-review.log.
+
+Nothing shows up on the page? While no attempts are saved, the page shows a "Setup check" box on
+the left (game folder, recorder, autoexec.cfg, the game's yaw.log, what was read from it). A
+screenshot of it says where it stops.
 
 
 Test checklist
 --------------
 
 Please note what you see for each step. Screenshots, or a copy of the console window's text, help.
+If attempts don't show up, send a screenshot of the "Setup check" box and the file
+%LOCALAPPDATA%\strafe-review\strafe-review.log (paste that path into the Explorer address bar).
 
 1. Windows warnings: did SmartScreen ("Windows protected your PC") or your antivirus say anything
    when you unzipped or started the exe? What exactly?
@@ -43,6 +50,8 @@ Please note what you see for each step. Screenshots, or a copy of the console wi
        "C:\full\path\to\strafe-review.exe" %command%
      (with the quotes, and your real path to the exe).
    - Start the game from Steam. Does a console window show up and stay over or behind the game?
+     (It only shows the two install lines while the game runs; that is normal. The server itself
+     runs in the background without a window.)
    - Play an attempt or two, then quit the game. Does the review page open?
    - After quitting, does Steam still show Momentum Mod as "Running" or "Stop"?
    - Is strafe-review.exe still in Task Manager? (It's meant to stay running in the background,

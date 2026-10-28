@@ -7,9 +7,10 @@
     strafe-review.exe %command%       as a Steam launch option: install, start the server in the
                                       background, run the game, open the page when it quits
 
-If a copy is already serving, a double-click only opens the page. The server reads yaw.log from the
-start and skips attempts already saved, so attempts played while it wasn't running are picked up on
-the next start. On Linux, collector/strafe-review-run stays the launch option wrapper.
+Everything it prints also goes to strafe-review.log in %LOCALAPPDATA%\\strafe-review (the background
+copy's only output). If a copy is already serving, a double-click only opens the page. The server
+reads yaw.log from the start and skips attempts already saved, so attempts played while it wasn't
+running are picked up on the next start. On Linux, collector/strafe-review-run stays the launch option wrapper.
 """
 import os
 import socket
@@ -22,6 +23,7 @@ from pathlib import Path
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 sys.path[:0] = [str(ROOT), str(ROOT / "collector"), str(ROOT / "viewer")]  # finds the imports below
 import server
+import steam
 
 import collector
 import install
@@ -29,7 +31,46 @@ import install
 PORT = int(os.environ.get("STRAFE_REVIEW_PORT", "8765"))  # the variable is for tests
 URL = f"http://127.0.0.1:{PORT}/"
 SERVE = "--serve"  # internal: the background copy the launch option starts
+LOG = steam.data_dir() / "strafe-review.log"
+LOG_MAX = 1 << 20  # bytes; a longer log is started over
 START_WAIT = 10  # seconds the launch option waits for the server it started, after the game
+
+
+class Tee:
+    """Writes to the console (if there is one) and to the log file."""
+
+    def __init__(self, *streams):
+        self.streams = [s for s in streams if s is not None]
+
+    def write(self, text):
+        for s in self.streams:
+            try:
+                s.write(text)
+                s.flush()
+            except (OSError, ValueError):
+                pass
+        return len(text)
+
+    def flush(self):
+        pass
+
+
+def log_to_file():
+    """Send this copy's output to the log file too. The background copy's console output goes nowhere,
+    so the file is all there is of it."""
+    try:
+        LOG.parent.mkdir(parents=True, exist_ok=True)
+        if LOG.exists() and LOG.stat().st_size > LOG_MAX:
+            LOG.unlink()  # fails on Windows while another copy has it open; then it waits for the next start
+    except OSError:
+        pass
+    try:
+        f = open(LOG, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - open for the program's life
+    except OSError:
+        return
+    f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(sys.argv[1:]) or '(double-click)'}\n")
+    sys.stdout = Tee(sys.stdout, f)
+    sys.stderr = Tee(sys.stderr, f)
 
 
 def serving():
@@ -108,6 +149,7 @@ def launch(game_cmd):
 
 def main():
     args = sys.argv[1:]
+    log_to_file()
     if args == [SERVE]:
         return server.main(["--port", str(PORT), "--no-browser"])
     if args:

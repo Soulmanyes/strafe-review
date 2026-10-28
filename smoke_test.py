@@ -4,7 +4,9 @@
 Usage: python smoke_test.py dist/strafe-review(.exe)
 
 Run by .github/workflows/windows.yml on the Windows build; it runs on Linux too. Checks:
-1. Double-click: installs the recorder and the autoexec.cfg block, serves every page, opens the page.
+1. Double-click: installs the recorder and the autoexec.cfg block, serves every page, opens the page,
+   /api/status sees the setup, and an attempt written into yaw.log the way the game writes it (file
+   kept open, CRLF, chunks in separate writes) is collected and listed.
 2. A second double-click while it runs only opens the page and exits; a second server on the busy port
    exits with an error (the SO_REUSEADDR check on Windows).
 3. Launch option: runs the "game", hands back its exit code, leaves the server running, opens the page.
@@ -54,6 +56,28 @@ def opened(tmp):
     return f.read_text().split() if f.exists() else []
 
 
+SMOKE_ID = "smoketest1"
+
+
+def write_attempt(path):
+    """Append one attempt as the recorder writes it: the game keeps the log open and writes CRLF lines,
+    a chunk at a time."""
+    data = json.dumps({"format": 1, "id": SMOKE_ID, "map": "bhop_smoke", "started": 1, "interval": 0.01,
+                       "style": 0, "track": {"type": 0, "number": 0}, "label": "own", "player": None,
+                       "cols": ["tick", "vx", "vy", "vz"], "rows": "0,0,0,0;1,10,0,0", "events": [],
+                       "reason": "reset", "runTime": 0.01, "gaps": 0, "ended": 2})
+    n = 3
+    size = -(-len(data) // n)
+    parts = [data[i * size:(i + 1) * size] for i in range(n)]
+    with open(path, "ab", buffering=0) as f:
+        f.write(b"[panorama] unrelated line\r\n")
+        for i, part in enumerate(parts, 1):
+            f.write(f"[panorama] SRREC {SMOKE_ID} {i}/{n} {part}\r\n".encode())
+            time.sleep(0.6)
+        f.write(f"[panorama] SRREC {SMOKE_ID} end n={n} chars={len(data)}\r\n".encode())
+        time.sleep(3)  # still open while the collector reads, like the game
+
+
 def stop_all(exe):
     """End every copy of the program (a one-file build runs as a bootloader plus a child)."""
     if WIN:
@@ -96,6 +120,20 @@ def main():
         code, body = get("/api/attempts")
         if code != 200 or json.loads(body) != []:
             fail(f"/api/attempts answered {code} {body[:100]!r}")
+        code, body = get("/api/status")
+        st = json.loads(body) if code == 200 else {}
+        if not (st.get("game") and Path(st["game"]).samefile(game) and st.get("recorder") and st.get("autoexecBlock")
+                and st.get("collecting") and st.get("log", {}).get("exists")):
+            fail(f"/api/status answered {code} {body[:300]!r}")
+        write_attempt(game / "yaw.log")
+        end = time.time() + 15
+        while time.time() < end and SMOKE_ID not in get("/api/attempts")[1].decode():
+            time.sleep(0.5)
+        if SMOKE_ID not in get("/api/attempts")[1].decode():
+            fail(f"the attempt written to yaw.log wasn't collected; status: {get('/api/status')[1][:400]!r}")
+        st = json.loads(get("/api/status")[1])
+        if st["saved"] != 1 or st["collector"]["recorder"] != 4:
+            fail(f"status after collecting: {st}")
         if not (game / "custom" / "strafe-review" / "panorama" / "scripts" / "hud" / "strafe-review.ts").is_file():
             fail("recorder not installed")
         autoexec = (game / "cfg" / "autoexec.cfg").read_bytes()
@@ -105,7 +143,7 @@ def main():
         time.sleep(2)
         if opened(tmp) != [URL]:
             fail(f"browser calls: {opened(tmp)}")
-        print("   ok: pages, recorder, CRLF autoexec block, browser")
+        print("   ok: pages, recorder, CRLF autoexec block, browser, status, attempt collected from a live log")
 
         print("2. second copy while running")
         r = subprocess.run([exe], env=env, timeout=60, capture_output=True, text=True, check=False)
@@ -130,7 +168,10 @@ def main():
         time.sleep(2)
         if opened(tmp)[-1:] != [URL] or len(opened(tmp)) != 3:
             fail(f"browser calls: {opened(tmp)}")
-        print("   ok: exit code 3 handed back, background server running, page opened")
+        log = tmp / "data" / "strafe-review" / "strafe-review.log"
+        if "Strafe Review viewer on" not in (log.read_text(errors="replace") if log.exists() else ""):
+            fail(f"the background copy's output isn't in {log}")
+        print("   ok: exit code 3 handed back, background server running, page opened, output in strafe-review.log")
 
         print("4. Stop button")
         req = urllib.request.Request(URL + "api/stop", data=b"{}", method="POST",

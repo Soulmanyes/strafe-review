@@ -296,3 +296,11 @@ button.stop:hover { background: #4a2a2a; border-color: #e06c64; }
 body.stopped { align-items: center; justify-content: center; }
 .stopped-msg { text-align: center; color: var(--muted); }
 .stopped-msg h1 { color: var(--text); font-size: 20px; }
+
+/* Setup check while no attempts are saved (status.js) */
+.status-box { margin-top: 10px; display: grid; gap: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.status-head { color: var(--muted); }
+.status-row { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.status-row.ok b { color: var(--own); }
+.status-row.bad { border-color: #c0564f; }
+.status-row.bad b { color: #e06c64; }
