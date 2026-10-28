@@ -20,7 +20,7 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 ## Setup on Linux (so far)
 
 1. `python install.py` finds Momentum through Steam's library folders (or `MOMENTUM_DIR`, or `--game DIR`) and:
-   - copies the recorder HUD script into Momentum's `custom/` folder (type `panorama_reload` in game after updating it),
+   - copies the recorder HUD script into Momentum's `custom/0-strafe-review` folder, with a `timer.xml` that loads it: a copy of the one the game would load otherwise (another HUD mod's in `custom/`, else the game's own) plus one script line. The folder name sorts first, because the game mounts `custom/` folders alphabetically and the first file found wins. Type `panorama_reload` in game after updating it,
    - adds a marked block to `cfg/autoexec.cfg` (`con_logfile yaw.log`, and `engine_no_focus_sleep 0` so replays watched while tabbed out record every tick; the first run keeps a copy as `autoexec.cfg.bak-strafe-review`; restart the game after installing),
    - on Linux, links `strafe-review-run` into `~/.local/bin`.
 

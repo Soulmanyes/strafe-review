@@ -3,10 +3,11 @@
 
 Usage: install.py [--game DIR] [--uninstall]
 
-- Copies the recorder (recorder/panorama) into the game's custom/strafe-review folder. Type
-  panorama_reload in game after updating it.
-- Warns when the game's own timer.xml changed since recorder/panorama/layout/hud/timer.xml was copied
-  from it (the copy shadows it).
+- Copies the recorder (recorder/panorama) into the game's custom/0-strafe-review folder, with a
+  layout/hud/timer.xml that loads it: a copy of the timer.xml the game would use otherwise (another
+  HUD mod's in custom/, else the game's own) with one more script include. The game mounts custom/
+  folders in alphabetical order and the first file found wins, so the folder name sorts first.
+  Type panorama_reload in game after updating it.
 - Writes a marked block into cfg/autoexec.cfg: con_logfile yaw.log (the log the collector reads), and
   engine_no_focus_sleep 0, so replays watched while tabbed out record every tick. The first install
   keeps the original as autoexec.cfg.bak-strafe-review. Restart the game after installing.
@@ -16,9 +17,10 @@ The game folder comes from MOMENTUM_DIR or Steam's library folders, or --game.
 --uninstall removes the recorder, the autoexec block and the link.
 """
 import argparse
-import hashlib
 import os
+import re
 import shutil
+import struct
 import sys
 import tempfile
 from pathlib import Path
@@ -32,6 +34,10 @@ END = "// strafe-review end"
 # yaw.log is the name Source Yaw's yaws.cfg uses too; only one con_logfile is active, so both tools share it
 BLOCK = [BEGIN, "con_logfile yaw.log", "engine_no_focus_sleep 0", END]
 LINK = Path.home() / ".local" / "bin" / "strafe-review-run"
+FOLDER = "0-strafe-review"  # in custom/; sorts before other mods, so our timer.xml is the one loaded
+OLD_FOLDERS = ["strafe-review"]  # before 2026-10-28; removed on install
+TIMER = Path("panorama") / "layout" / "hud" / "timer.xml"
+INCLUDE = '<include type="module" src="file://{scripts}/hud/strafe-review.ts" />'
 
 
 def without_block(lines):
@@ -85,18 +91,60 @@ def set_autoexec(game, add):
     print(f"{'updated' if add else 'removed the strafe-review block from'} {autoexec}")
 
 
-def check_timer(game):
-    """Warn if the game's timer.xml no longer matches the one the recorder's copy was made from."""
-    upstream = Path(game) / "panorama" / "layout" / "hud" / "timer.xml"
-    want = (ROOT / "recorder" / "timer.xml.upstream.sha256").read_text().split()[0]
+def vpk_files(path):
+    """The file paths listed in a VPK's directory (v1 or v2), lower case; empty if it can't be read."""
     try:
-        have = hashlib.sha256(upstream.read_bytes()).hexdigest()
-    except OSError:
-        have = None
-    if have != want:
-        print("warning: the game's timer.xml changed since the copy in recorder/ was made; diff it before playing:",
-              file=sys.stderr)
-        print(f'  diff "{upstream}" "{ROOT / "recorder/panorama/layout/hud/timer.xml"}"', file=sys.stderr)
+        data = path.read_bytes()
+        sig, version, tree = struct.unpack_from("<III", data)
+        if sig != 0x55AA1234 or version not in (1, 2):
+            return set()
+        pos, end = (12 if version == 1 else 28), (12 if version == 1 else 28) + tree
+
+        def string():
+            nonlocal pos
+            stop = data.index(b"\0", pos)
+            s, pos = data[pos:stop].decode("utf-8", "replace"), stop + 1
+            return s
+
+        out = set()
+        while pos < end and (ext := string()):
+            while (folder := string()):
+                while (name := string()):
+                    preload = struct.unpack_from("<H", data, pos + 4)[0]
+                    pos += 18 + preload
+                    out.add(f"{'' if folder == ' ' else folder + '/'}{name}.{ext}".lower())
+        return out
+    except (OSError, struct.error, ValueError):
+        return set()
+
+
+def base_timer(game):
+    """The timer.xml the game would load without us: the first custom/ folder in mount order that has
+    one, else the game's own. A VPK with one in front of it can't be copied from; that gets a warning."""
+    custom = Path(game) / "custom"
+    ours = {FOLDER.lower(), *(f.lower() for f in OLD_FOLDERS)}
+    entries = sorted(custom.iterdir(), key=lambda p: p.name.lower()) if custom.is_dir() else []
+    for entry in entries:
+        if entry.name.lower() in ours:
+            continue
+        if entry.is_dir() and (entry / TIMER).is_file():
+            return entry / TIMER
+        if entry.suffix.lower() == ".vpk" and TIMER.as_posix().lower() in vpk_files(entry):
+            print(f"warning: {entry} has its own timer.xml, which ours replaces; that mod's timer may look "
+                  "different", file=sys.stderr)
+    return Path(game) / TIMER
+
+
+def timer_with_recorder(text):
+    """timer.xml text with our script included next to the others."""
+    if "strafe-review.ts" in text:
+        return text
+    m = re.search(r"^([ \t]*)</scripts>", text, re.MULTILINE)
+    if not m:
+        raise ValueError("no </scripts> in timer.xml")
+    indent = m.group(1) + ("\t" if "\t" in m.group(1) or not m.group(1) else "    ")
+    nl = "\r\n" if "\r\n" in text else "\n"
+    return text[:m.start()] + indent + INCLUDE + nl + text[m.start():]
 
 
 def link_launcher(add):
@@ -115,19 +163,26 @@ def link_launcher(add):
 
 
 def install(game):
-    check_timer(game)
-    dest = Path(game) / "custom" / "strafe-review"
+    for old in OLD_FOLDERS:
+        shutil.rmtree(Path(game) / "custom" / old, ignore_errors=True)
+    base = base_timer(game)
+    text = timer_with_recorder(base.read_text(encoding="utf-8", errors="surrogateescape"))
+    dest = Path(game) / "custom" / FOLDER
     shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(ROOT / "recorder" / "panorama", dest / "panorama")
-    print(f"installed to {dest}")
+    (dest / TIMER).parent.mkdir(parents=True, exist_ok=True)
+    (dest / TIMER).write_text(text, encoding="utf-8", errors="surrogateescape", newline="")
+    print(f"installed to {dest} (timer.xml based on {base})")
     set_autoexec(game, add=True)
     link_launcher(add=True)
 
 
 def uninstall(game):
-    dest = Path(game) / "custom" / "strafe-review"
-    shutil.rmtree(dest, ignore_errors=True)
-    print(f"removed {dest}")
+    for name in (FOLDER, *OLD_FOLDERS):
+        dest = Path(game) / "custom" / name
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+            print(f"removed {dest}")
     set_autoexec(game, add=False)
     link_launcher(add=False)
 

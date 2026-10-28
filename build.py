@@ -34,7 +34,6 @@ def main():
         "--paths", str(ROOT / "collector"), "--paths", str(ROOT / "viewer"),
         *data("viewer/static", "viewer/static"),
         *data("recorder/panorama", "recorder/panorama"),
-        *data("recorder/timer.xml.upstream.sha256", "recorder"),
         str(ROOT / "strafe_review.py"),
     ]
     sys.exit(subprocess.call(cmd, cwd=ROOT))

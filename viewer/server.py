@@ -413,7 +413,7 @@ def status(handler):
         block = False
     return {
         "game": str(game) if game else None,
-        "recorder": bool(game) and (game / "custom" / "strafe-review" / "panorama" / "scripts" / "hud" / "strafe-review.ts").is_file(),
+        "recorder": bool(game) and (game / "custom" / "0-strafe-review" / "panorama" / "scripts" / "hud" / "strafe-review.ts").is_file(),
         "autoexecBlock": block,
         "log": file_info(handler.log) if handler.log else None,
         "collecting": handler.log is not None,

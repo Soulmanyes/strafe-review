@@ -5,7 +5,7 @@ Usage: python smoke_test.py dist/strafe-review(.exe)
 
 Run by .github/workflows/windows.yml on the Windows build; it runs on Linux too. Checks:
 1. Double-click: installs the recorder and the autoexec.cfg block, serves every page, opens the page,
-   /api/status sees the setup, and an attempt written into yaw.log the way the game writes it (file
+   timer.xml is based on another HUD mod's copy that would win otherwise, /api/status sees the setup, and an attempt written into yaw.log the way the game writes it (file
    kept open, CRLF, chunks in separate writes) is collected and listed.
 2. A second double-click while it runs only opens the page and exits; a second server on the busy port
    exits with an error (the SO_REUSEADDR check on Windows).
@@ -57,6 +57,13 @@ def opened(tmp):
 
 
 SMOKE_ID = "smoketest1"
+FAKE_TIMER = """<root>
+\t<scripts>
+\t\t<include type="module" src="file://{{scripts}}/hud/timer.ts" />
+\t</scripts>
+\t<MomHudTimer id="mod-{mod}" />
+</root>
+"""
 
 
 def write_attempt(path):
@@ -93,7 +100,12 @@ def main():
     game = tmp / "game"
     (game / "cfg").mkdir(parents=True)
     (game / "panorama" / "layout" / "hud").mkdir(parents=True)
-    shutil.copy(ROOT / "recorder" / "panorama" / "layout" / "hud" / "timer.xml", game / "panorama" / "layout" / "hud")
+    (game / "panorama" / "layout" / "hud" / "timer.xml").write_text(FAKE_TIMER.format(mod="game"))
+    # another HUD mod with its own timer.xml, mounted before "strafe-review" (like panoDev): ours must be
+    # based on its file and win
+    other = game / "custom" / "panoDev" / "panorama" / "layout" / "hud"
+    other.mkdir(parents=True)
+    (other / "timer.xml").write_text(FAKE_TIMER.format(mod="panoDev"))
     (game / "cfg" / "autoexec.cfg").write_bytes(b"exec something\r\n")  # CRLF, as Windows editors write it
     (game / "yaw.log").write_text("")
     browser = tmp / "browser.py"
@@ -134,8 +146,12 @@ def main():
         st = json.loads(get("/api/status")[1])
         if st["saved"] != 1 or st["collector"]["recorder"] != 4:
             fail(f"status after collecting: {st}")
-        if not (game / "custom" / "strafe-review" / "panorama" / "scripts" / "hud" / "strafe-review.ts").is_file():
+        ours = game / "custom" / "0-strafe-review" / "panorama"
+        if not (ours / "scripts" / "hud" / "strafe-review.ts").is_file():
             fail("recorder not installed")
+        timer = (ours / "layout" / "hud" / "timer.xml").read_text()
+        if "mod-panoDev" not in timer or timer.count("strafe-review.ts") != 1:
+            fail(f"timer.xml isn't panoDev's with our include:\n{timer}")
         autoexec = (game / "cfg" / "autoexec.cfg").read_bytes()
         want = b"exec something\r\n// strafe-review begin\r\ncon_logfile yaw.log\r\nengine_no_focus_sleep 0\r\n// strafe-review end\r\n"
         if autoexec != want:

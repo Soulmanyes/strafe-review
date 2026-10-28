@@ -30,7 +30,7 @@ NOT_FOUND = "Momentum Mod not found in any Steam library; set MOMENTUM_DIR to it
 POLL = 0.25  # seconds between reads when the log has nothing new
 STALE = 600  # seconds after which an attempt without its end line is dropped
 # What run() has seen since it started, for the viewer's status box (/api/status)
-STATS = {"lines": 0, "recorder": 0, "saved": 0, "dropped": 0, "lastLine": None, "lastRecorder": None, "lastSaved": None}
+STATS = {"lines": 0, "recorder": 0, "saved": 0, "dropped": 0, "lastLine": None, "lastRecorder": None, "lastSaved": None, "lastLoad": None}
 
 
 def follow(path, once=False):
@@ -102,7 +102,7 @@ def run(log, store, once):
     known = known_ids(store)
     asm = Assembler()
     print(f"collector: reading {log}, saving to {store} ({len(known)} attempts already there)", flush=True)
-    STATS.update(lines=0, recorder=0, saved=0, dropped=0, lastLine=None, lastRecorder=None, lastSaved=None)
+    STATS.update(lines=0, recorder=0, saved=0, dropped=0, lastLine=None, lastRecorder=None, lastSaved=None, lastLoad=None)
     for line in follow(log, once):
         if line is None:
             for b in asm.drop_stale(STALE):
@@ -116,6 +116,8 @@ def run(log, store, once):
             continue
         STATS["recorder"] += 1
         STATS["lastRecorder"] = time.time()
+        if text.startswith("load "):  # the recorder's first line, written when the HUD loads it
+            STATS["lastLoad"] = time.time()
         got = asm.feed(text)
         if got is None:
             continue

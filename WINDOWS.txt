@@ -18,10 +18,12 @@ Setup
 3. Restart Momentum Mod if it was running, so it reads the new lines in cfg\autoexec.cfg.
 
 What it changes in the game folder:
-- adds the folder custom\strafe-review (the HUD script that records attempts)
+- adds the folder custom\0-strafe-review (the HUD script that records attempts). Its name sorts
+  first, so it works next to other HUD mods in custom\. It copies their timer.xml (or the game's)
+  and adds one line, and does that again on every start, so their updates carry over.
 - adds a block between "// strafe-review begin" and "// strafe-review end" to cfg\autoexec.cfg
   (the original is kept as cfg\autoexec.cfg.bak-strafe-review)
-To undo: delete custom\strafe-review and that block.
+To undo: delete custom\0-strafe-review and that block.
 
 Attempts are saved in %LOCALAPPDATA%\strafe-review\attempts. Everything the program prints also
 goes to %LOCALAPPDATA%\strafe-review\strafe-review.log.
