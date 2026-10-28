@@ -4,6 +4,7 @@
 //
 // Definitions match the rest of the viewer, so the same jump shows the same number everywhere:
 //  - gain %: sum(gain) / sum(ideal) over a jump's rows, as findJumps() and the jump strip.
+//  - CS:S gain (ssj): findJumps()' SSJ-style score, summed over jumps 1+ the way SSJ averages ticks.
 //  - angle: median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out), as the drill page.
 //  - strafes: strafesOf(). Rows judged: strafing() (air, 100+ u/s, no collision).
 //  - sync: share of strafing ticks with a turn where the held key (A or D alone) matches the turn side.
@@ -179,6 +180,8 @@ function summarize(head, d, jumps) {
 	let noKey = 0;
 	let btnTicks = 0;
 	const swaps = [];
+	let ssjSum = 0;
+	let ssjN = 0;
 	const perJump = run.map((j) => {
 		const [s, e] = jumpRange(j, endIdx);
 		let jg = 0;
@@ -215,7 +218,9 @@ function summarize(head, d, jumps) {
 		}
 		const isLanded = j.e <= endIdx && j.e < d.n;
 		if (isLanded) strafes += sts.length;
-		return { num: j.num, pct: j.pct, sync: syncOver(d, [[s, e]], lag).sync, strafes: sts.length, landed: isLanded, takeoff: j.takeoff, land: j.land };
+		ssjSum += j.ssjSum || 0;
+		ssjN += j.ssjN || 0;
+		return { num: j.num, pct: j.pct, ssj: j.ssj, sync: syncOver(d, [[s, e]], lag).sync, strafes: sts.length, landed: isLanded, takeoff: j.takeoff, land: j.land };
 	});
 
 	// swaps after the loop: the gain dip is judged against the run's own gain %
@@ -286,6 +291,7 @@ function summarize(head, d, jumps) {
 		keyOff: ko.length ? median(ko.map((w) => w.keyOff)) : NaN,
 		keyOnTarget: ko.length ? (100 * ko.filter((w) => w.keyOff >= -2 && w.keyOff <= 0).length) / ko.length : NaN,
 		gainPct: runPct,
+		ssjPct: !d.coarse && ssjN ? (100 * ssjSum) / ssjN : NaN,
 		sync: syncOver(d, ranges, lag).sync,
 		lag,
 		angle: ratios.length ? median(ratios) : NaN,

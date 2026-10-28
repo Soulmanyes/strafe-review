@@ -129,6 +129,7 @@ async function entry(h) {
 			takeoff: d.speed[j.s],
 			land: d.speed[last],
 			pct: j.pct,
+			ssj: j.ssj,
 			lostTotal: sum,
 			mistakes,
 			keys,
@@ -658,7 +659,7 @@ function showCards() {
 		const nums = document.createElement('div');
 		nums.className = 'nums';
 		nums.textContent = e.complete
-			? `${e.takeoff.toFixed(0)} → ${e.land.toFixed(0)} u/s (${e.land >= e.takeoff ? '+' : ''}${(e.land - e.takeoff).toFixed(0)}) · gain ${e.pct.toFixed(2)} % · ${e.ticks} ticks`
+			? `${e.takeoff.toFixed(0)} → ${e.land.toFixed(0)} u/s (${e.land >= e.takeoff ? '+' : ''}${(e.land - e.takeoff).toFixed(0)}) · gain ${e.pct.toFixed(2)} %${Number.isFinite(e.ssj) ? ` · CS:S ${e.ssj.toFixed(1)} %` : ''} · ${e.ticks} ticks`
 			: `takeoff ${e.takeoff.toFixed(0)} u/s · run ended ${e.ticks} ticks in`;
 		const m = document.createElement('div');
 		m.className = 'worst';
@@ -765,7 +766,7 @@ function showFocus() {
 	const head = el('div', 'v-head');
 	head.append(el('b', '', `${when(f.h.started)}`));
 	if (f.complete) {
-		head.append(` · ${f.takeoff.toFixed(0)} → ${f.land.toFixed(0)} u/s · gain ${f.pct.toFixed(2)} %`);
+		head.append(` · ${f.takeoff.toFixed(0)} → ${f.land.toFixed(0)} u/s · gain ${f.pct.toFixed(2)} %${Number.isFinite(f.ssj) ? ` · CS:S ${f.ssj.toFixed(1)} %` : ''}`);
 		if (Number.isFinite(medLand)) {
 			const dm = f.land - medLand;
 			head.append(el('span', dm >= 0 ? 'good' : 'bad', ` · ${dm >= 0 ? '+' : ''}${dm.toFixed(1)} vs your median`));

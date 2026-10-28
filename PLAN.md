@@ -471,6 +471,19 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - On the owner's finished ambience runs, swaps hold 50-64 % of all speed lost (one run with missed ticks near most swaps: 4 %).
 - Other new numbers: speed lost (sum of ideal - gain on strafing ticks), spread (std dev of landed jumps' gain %), left/right gain %, band shares (in / too slow / too fast, yawRatio 0.85-1.15 on strafe middles), median turn speed (+ cm/s with the DPI), strafe length, +left/+right ticks, air time, no key while turning, W in air, distance.
 
+#### CS:S gain (SSJ) v1 (2026-10-28)
+
+- **Owner's ask.** A tool that turns Momentum gain into CS:S gain and back. A single number can't be converted, because the two measure different things, so each jump gets a CS:S-style gain computed from the recording instead. It shows in the jump strip label, the Run stats Gain card (whole run, plus jump 1 in the Speed card), on /drill next to jump 1's gain, and in the /compare stats and per-jump tables.
+- **Source.** The SSJ plugin, Nairdaa/shavit-ssj (`SSJ_GetStats`). It runs on every tick of a jump: the jump tick (ground, jump pressed) and each air tick, unless on a ladder or in water. wishdir comes from the command's angles and forwardmove/sidemove. currentgain = velocity (before the move) · wishdir. The tick scores (wishspd - |currentgain|) / wishspd when currentgain < 30 (wishspd = min(wishspeed, 30), so 30 with any key), else 0. With no key it scores 0 but still counts. The jump's value is sum / ticks * 100, printed on the next jump's chat line. A wall-touch rule flips scores over 0.5; it is left out here, because there is no wall data. The formula was re-implemented from reading; no code was copied.
+- **How (data.js `ssjOver()`, `angleFit()`, `wishDir()`).**
+  - Air rows come from the velocity alone. The air move adds (30 - p) along wishdir, so m = |v - v_prev| (horizontal vector) gives p = 30 - m exactly. Score: m / 30 up to 30, (60 - m) / 30 above. Rows with m > 60 (teleport, booster, wall) are skipped.
+  - Why not the yaw: the recorded yaw is a per-frame sample up to about 1.3° off the real move direction, measured as the angle between wishdir and the actual velocity change. At 1000 u/s 1° moves p by about 17. The yaw method put top replays at 52-67 % and one at -300 %. The velocity method gives 79-88 %.
+  - The takeoff row is a ground move, so it uses yaw + keys, read `lag` rows later. `angleFit()` picks the offset 0-10 whose angles best predict each air tick's speed with CS:S air physics (own runs: lag 0, error 0.03 u/s; replays: lag 6). A fit worse than 1 u/s leaves the takeoff row out.
+  - Spectated live runs (`d.coarse`) get none.
+- **Check.** The CS:S air physics (add up to 30 u/s along wishdir) predicts own-run speed per tick to 0.03 u/s, so Momentum's air move matches CS:S here. Old summary stats were unchanged by this.
+- **Numbers.** Owner's finished ambience runs: 70-76 % CS:S vs 83-88 % Momentum gain. Top replays: 79-88 % CS:S vs 91-95 %. The two don't map one to one: CS:S scores the angle error linearly, Momentum's speed gain only quadratically.
+- **Not tested against a real CS:S server.** Momentum has no SSJ-equivalent number (LastJump has speedGain, yawRatio, efficiency, sync). A real check needs the owner's CS:S SSJ numbers for comparison.
+
 ## Later / undecided
 
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.

@@ -354,6 +354,13 @@ function showStats() {
 			best: 'max'
 		},
 		{
+			name: 'CS:S gain (SSJ)',
+			tip: 'Gain % the way the CS:S SSJ plugin shows it: each tick scores how square the move is to the velocity, (30 - |p|) / 30, averaged over the ticks of jumps 1+. Taken from the velocity change, so replays are exact too',
+			vals: S.map((s) => `${f(s.ssjPct)} %`),
+			nums: S.map((s) => s.ssjPct),
+			best: 'max'
+		},
+		{
 			name: 'Sync (keys vs turn)',
 			tip: 'Share of strafing ticks where A or D alone matches the turn side. +left/+right ticks are left out. Keys are shifted by the lag that matches best (replay keys run ahead of the angles). Not the game\'s own sync number.',
 			vals: S.map((s, i) => cell(`${f(s.sync, 1)} %`, `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${isOther(shown[i].head) ? ' · approximate' : ''}`)),
@@ -413,14 +420,14 @@ function showPerJump() {
 	const max = Math.max(...shown.map((r) => r.stats.jumps));
 	const counts = new Set(shown.map((r) => r.stats.landed));
 	$('pj-note').textContent =
-		'gain % · sync · strafes, matched by jump number' +
+		'gain % · CS:S (SSJ) gain · sync · strafes, matched by jump number' +
 		(counts.size > 1 ? ' · jump counts differ, so after a skipped jump a row compares different blocks' : '');
 	const rows = [];
 	for (let n = 1; n <= max; n++) {
 		const js = shown.map((r) => r.stats.perJump.find((j) => j.num === n));
 		rows.push({
 			name: `Jump ${n}`,
-			vals: js.map((j) => (j ? cell(`${f(j.pct)} %`, `sync ${f(j.sync, 0)} % · ${j.strafes} strafes${j.landed ? '' : ' · run ended'}`) : '–')),
+			vals: js.map((j) => (j ? cell(`${f(j.pct)} %`, `CS:S ${f(j.ssj, 1)} % · sync ${f(j.sync, 0)} % · ${j.strafes} strafes${j.landed ? '' : ' · run ended'}`) : '–')),
 			nums: js.map((j) => (j ? j.pct : NaN)),
 			best: 'max'
 		});

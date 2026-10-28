@@ -735,6 +735,13 @@ function runStatRows() {
 			title: 'Gain',
 			rows: [
 				{ name: 'Gain %', desc: 'How much of the speed you could have gained you actually gained. 100 % = perfect strafing.', tip: 'Sum of gain over sum of ideal gain, every jump from jump 1 on (as the jump strip)', v: (s) => n(s.gainPct, 2, ' %') },
+				{
+					name: 'CS:S gain (SSJ)',
+					desc: 'Gain % the way CS:S servers show it in chat (the SSJ plugin). It scores how square your move is to your speed each tick, so it reads lower than Momentum\'s gain %. Top replays about 80-88 %.',
+					tip: 'Average over every tick of jumps 1+ of (30 - |p|) / 30 (0 when p is 30+), p = previous velocity along the move direction, taken from the velocity change. SSJ\'s wall-touch rule is left out. Per jump in the jump strip',
+					v: (s) => n(s.ssjPct, 2, ' %'),
+					need: 'tick'
+				},
 				{ name: 'Speed lost', desc: 'Speed you would have had on top with perfect strafing, added up over the run.', tip: 'Sum of ideal - gain over every strafing tick (air, 100+ u/s, no wall hit): speed you could have had', v: (s) => n(s.lost, 0, ' u/s'), need: 'tick' },
 				{ name: 'Best jump', desc: 'Your jump with the highest gain %. Click to see it.', tip: 'Landed jump with the highest gain %', v: (s, r) => jumpOf(r, s.bestJump), click: (s) => s.bestJump && zoomJump(s.bestJump.num) },
 				{ name: 'Worst jump', desc: 'Your jump with the lowest gain %. Click to see it.', tip: 'Landed jump with the lowest gain %', v: (s, r) => jumpOf(r, s.worstJump), click: (s) => s.worstJump && zoomJump(s.worstJump.num) },
@@ -750,7 +757,7 @@ function runStatRows() {
 				{ name: 'At the end', desc: 'Speed at the finish (or where the recording stops).', tip: 'At the finish, or at the end of the recording', v: (s) => n(s.speedEnd, 0, ' u/s') },
 				{ name: 'Jump 1 takeoff', desc: 'Speed leaving the start zone ground: how good the prestrafe was.', v: (s) => (s.j1 ? n(s.j1.takeoff, 1, ' u/s') : '–') },
 				{ name: 'Jump 1 landing', desc: 'Speed when jump 1 lands. Takeoff + what you gained on jump 1.', v: (s) => (s.j1 && s.j1.landed ? n(s.j1.land, 1, ' u/s') : '–') },
-				{ name: 'Jump 1 gain', desc: 'Gain % on jump 1 alone. Click to see it.', v: (s) => (s.j1 ? n(s.j1.pct, 2, ' %') : '–'), click: () => zoomJump(1) }
+				{ name: 'Jump 1 gain', desc: 'Gain % on jump 1 alone, and the CS:S (SSJ) gain for it. Click to see it.', v: (s) => (s.j1 ? `${n(s.j1.pct, 2, ' %')}${Number.isFinite(s.j1.ssj) ? ` · CS:S ${n(s.j1.ssj, 1, ' %')}` : ''}` : '–'), click: () => zoomJump(1) }
 			]
 		},
 		{
@@ -1173,9 +1180,10 @@ const LANE_DRAW = {
 			g.strokeStyle = j.num ? `hsl(${hue} 65% 62%)` : COL.border;
 			g.strokeRect(X0 + 1.5, l.y + 4.5, X1 - X0 - 3, l.h - 9);
 			const label = `${j.num ? j.num : 'pre'} · ${Number.isFinite(j.pct) ? j.pct.toFixed(2) : '?'}%`;
+			const withSsj = j.num && Number.isFinite(j.ssj) ? `${label} · CS:S ${j.ssj.toFixed(1)}%` : label;
 			const gj = ghost && j.num ? ghost.jumps.find((x) => x.num === j.num) : null;
-			const full = gj && Number.isFinite(gj.pct) ? `${label} · ghost ${gj.pct.toFixed(2)}%` : label;
-			for (const t of [full, label]) {
+			const full = gj && Number.isFinite(gj.pct) ? `${withSsj} · ghost ${gj.pct.toFixed(2)}%` : withSsj;
+			for (const t of [full, withSsj, label]) {
 				if (g.measureText(t).width >= X1 - X0 - 8) continue;
 				g.fillStyle = COL.text;
 				g.fillText(t, X0 + 6, l.y + l.h / 2 + 4);

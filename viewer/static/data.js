@@ -2,7 +2,7 @@
 // Strafe Review: attempt parsing and jump finding, shared by the page (app.js), the checks
 // (checks.js) and the node harness (viewer/check_mistakes.js). No DOM here.
 
-const BIT = { JUMP: 1 << 1, FORWARD: 1 << 3, LEFT: 1 << 7, RIGHT: 1 << 8, MOVELEFT: 1 << 9, MOVERIGHT: 1 << 10 };
+const BIT = { JUMP: 1 << 1, FORWARD: 1 << 3, BACK: 1 << 4, LEFT: 1 << 7, RIGHT: 1 << 8, MOVELEFT: 1 << 9, MOVERIGHT: 1 << 10 };
 const AIR_ADD = 30; // u/s the air move adds square to velocity per tick (measured on own runs: 30.00)
 
 function wrap180(a) {
@@ -128,6 +128,87 @@ function parse(a) {
 	return d;
 }
 
+// CS:S-style jump gain, the way the SSJ plugin (Nairdaa/shavit-ssj) works it out. Every row of a jump
+// (the takeoff row and each air row) is one tick, scored from p = previous velocity · wishdir:
+// (30 - |p|) / 30 when p < 30, else 0 (no key held: 0; negative when moving against wishdir).
+// Jump gain = average score * 100. SSJ's wall-touch flip is left out (no wall data here).
+// The plugin reads the move's own angles; the recorded yaw is a per-frame sample up to ~1.3° off the
+// real wishdir, and at 1000 u/s 1° moves p by 17. So air rows use the velocity instead: the air move adds
+// (30 - p) along wishdir, so the change in horizontal velocity m = |v - v_prev| gives p = 30 - m exactly
+// (score m / 30 up to 30, (60 - m) / 30 above). Changes over 60 u/s (teleport, booster, wall) are skipped.
+// The takeoff row is a ground move, so it uses the yaw and keys, read `lag` rows later (angleFit()): a
+// recording's angles can trail its velocity (replays by about 6 ticks). Rows after missed ticks are skipped.
+const SSJ_LAG_MAX = 10;
+
+function wishDir(d, yi, ki) {
+	const b = d.buttons[ki];
+	const f = (b & BIT.FORWARD ? 1 : 0) - (b & BIT.BACK ? 1 : 0);
+	const sd = (b & BIT.MOVERIGHT ? 1 : 0) - (b & BIT.MOVELEFT ? 1 : 0);
+	if (!f && !sd) return null;
+	const y = (d.yaw[yi] * Math.PI) / 180;
+	const wx = Math.cos(y) * f + Math.sin(y) * sd;
+	const wy = Math.sin(y) * f - Math.cos(y) * sd;
+	const l = Math.hypot(wx, wy);
+	return [wx / l, wy / l];
+}
+
+// { lag, err }: yaw row offset (0..SSJ_LAG_MAX) with the smallest mean speed error (u/s) over air rows
+function angleFit(d) {
+	if (d.angleFit) return d.angleFit;
+	let best = { lag: 0, err: NaN };
+	for (let lag = 0; lag <= SSJ_LAG_MAX; lag++) {
+		let err = 0;
+		let n = 0;
+		for (let i = 1; i + lag < d.n; i++) {
+			if (d.ground[i] || d.ground[i - 1] || d.gap[i] > 0 || d.speed[i - 1] < 200) continue;
+			let ok = true;
+			for (let k = i + 1; k <= i + lag; k++) if (d.gap[k] > 0) ok = false;
+			if (!ok) continue;
+			const w = wishDir(d, i + lag, i);
+			let px = d.vx[i - 1];
+			let py = d.vy[i - 1];
+			if (w) {
+				const add = AIR_ADD - (px * w[0] + py * w[1]);
+				if (add > 0) {
+					px += add * w[0];
+					py += add * w[1];
+				}
+			}
+			err += Math.abs(Math.hypot(px, py) - d.speed[i]);
+			n++;
+		}
+		if (n && !(err / n >= best.err)) best = { lag, err: err / n };
+	}
+	d.angleFit = best;
+	return best;
+}
+
+// SSJ score sum and tick count over rows s..e-1 (s = the takeoff row)
+const SSJ_MAX_DV = 2 * AIR_ADD;
+const SSJ_FIT_MAX = 1; // u/s: a worse angle fit leaves the takeoff row out (the angles don't match the moves)
+
+function ssjOver(d, s, e, fit) {
+	let sum = 0;
+	let n = 0;
+	for (let i = Math.max(s, 1); i < e; i++) {
+		if (d.gap[i] > 0) continue;
+		if (i === s) {
+			if (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n) continue;
+			n++;
+			const w = wishDir(d, i + fit.lag, i);
+			if (!w) continue;
+			const p = d.vx[i - 1] * w[0] + d.vy[i - 1] * w[1];
+			if (p < AIR_ADD) sum += (AIR_ADD - Math.abs(p)) / AIR_ADD;
+			continue;
+		}
+		const m = Math.hypot(d.vx[i] - d.vx[i - 1], d.vy[i] - d.vy[i - 1]);
+		if (m > SSJ_MAX_DV) continue;
+		n++;
+		sum += (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD;
+	}
+	return { sum, n };
+}
+
 function findJumps(d, preRows) {
 	const takeoffs = [];
 	for (let i = 1; i < d.n; i++) if (d.vz[i] > 100 && d.vz[i - 1] <= 0.5) takeoffs.push(i);
@@ -143,7 +224,8 @@ function findJumps(d, preRows) {
 			g += d.gain[j];
 			id += d.ideal[j];
 		}
-		return { s, e, x0: d.x[s], x1: d.x[e - 1], pct: id > 0 ? (100 * g) / id : NaN, takeoff: d.speed[s], land: d.speed[e - 1] };
+		const ssj = d.coarse ? { sum: 0, n: 0 } : ssjOver(d, s, e, angleFit(d));
+		return { s, e, x0: d.x[s], x1: d.x[e - 1], pct: id > 0 ? (100 * g) / id : NaN, takeoff: d.speed[s], land: d.speed[e - 1], ssj: ssj.n ? (100 * ssj.sum) / ssj.n : NaN, ssjSum: ssj.sum, ssjN: ssj.n };
 	});
 	// Jump 1 takes off in the start zone: the one in the air when the timer starts, else the next one
 	const p = Math.min(preRows || 0, d.n - 1);
@@ -390,4 +472,4 @@ function gainShade(p, hex) {
 	return `rgb(${mix(ch(1))},${mix(ch(3))},${mix(ch(5))})`;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjOver, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
