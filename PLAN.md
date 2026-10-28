@@ -397,7 +397,11 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Pre-teleport rows dropped (2026-10-28):** `parse()` now drops every row before the last teleport ahead of the timer start (a replay's previous run, which showed as a chunk before -1.5 s) and moves `preRows` with them; it rewrites `a.rows` so a second parse is a no-op. All checkers give the same results as before.
 - **Long missed-tick holes (2026-10-28):** a step over more than 5 missed ticks (`PATH_MAX_GAP`) is not drawn on the path; the position still moves on. The player C ambience replay lost 115 ticks after jump 25 when the replay stopped, which drew a 1460-unit straight line.
 - **Run end (2026-10-28):** the main page's end index is `runEnd()` (also capped by `runTime`), not just the row before the post tail. A replay pauses at its end and keeps sending rows with the last velocity, so the path ran on past the end (player C's ambience replay went on about 1700 units). Those rows get no path position, sit in the post-end shading, and the checks skip them; the "end" ring sits at `runEnd()`.
-- **Not done:** the ghost on the path (start positions in the start zone differ, so it would need lining up).
+- **Next (owner's pick 2026-10-28): paths for comparisons, both places.**
+  - Main page: the Compare recording drawn on the path as a dashed pink line (same colour as the graph ghost), with its own hover dot at the row `alignGhost()` pairs with the hovered row. Coloured or plain pink: decide when building.
+  - /compare page: a path section with every shown recording overlaid, one colour each (the page's existing per-recording colours), hover linked to the graphs.
+  - Lining up: every path already starts at (0, 0) at the timer start and is turned to the same map axis, so same-map runs mostly overlap (own ambience finishes end within 171 units). Start-zone positions differ, so the rows before the timer start won't match; try plain overlay first, offset only if it looks wrong.
+  - Fit: one fit over all drawn paths (zoom/pan and Reset work as now). Replays: use `runEnd()` and the pre-teleport trim, as for the main path.
 
 ### Organising
 
