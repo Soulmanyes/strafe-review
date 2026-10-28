@@ -136,7 +136,7 @@ function loadFilters() {
 }
 
 // Each select lists only the values the saved attempts have. A choice that no attempt has any more
-// shows as All; a select with a single value is greyed out.
+// shows as All. syncFilters greys out what would not change the list.
 function fillFilters() {
 	const saved = loadFilters();
 	const pool = list.filter((a) => !isFragment(a));
@@ -145,16 +145,35 @@ function fillFilters() {
 		const sel = $(id);
 		sel.replaceChildren(new Option('All', ''), ...vals.map((v) => new Option(name(v), v)));
 		sel.value = vals.includes(saved[key]) ? saved[key] : '';
-		sel.disabled = key === 'tag' ? !vals.length : vals.length < 2;
 	}
 }
 
-function passesFilters(a) {
+// skip: a select id whose choice is ignored, to ask what its other choices would list
+function passesFilters(a, skip) {
 	for (const [, id, get] of FILTERS) {
-		const want = $(id).value;
+		const want = id !== skip && $(id).value;
 		if (want && ![get(a)].flat().includes(want)) return false;
 	}
 	return matchesSearch(a, $('f-search').value);
+}
+
+// A choice is greyed out when picking it would list nothing or the same attempts as All, given the
+// other filters, the search and "Show drills". A select with no other choice left is greyed out
+// whole, unless going back to All would change the list.
+function syncFilters() {
+	for (const [, id, get] of FILTERS) {
+		const pool = list.filter((a) => listable(a) && passesFilters(a, id));
+		const sel = $(id);
+		let useful = false;
+		for (const o of sel.options) {
+			if (!o.value) continue;
+			const n = pool.filter((a) => [get(a)].flat().includes(o.value)).length;
+			const changes = n > 0 && n < pool.length;
+			o.disabled = !changes && o.value !== sel.value;
+			if (changes || (o.value === sel.value && n !== pool.length)) useful = true;
+		}
+		sel.disabled = !useful;
+	}
 }
 
 function filtersChanged() {
@@ -164,21 +183,40 @@ function filtersChanged() {
 	renderList();
 }
 
-// Listed: not a replay fragment, a drill only with "Show drills", and through the filters
-function shown(a) {
-	return ($('show-drills').checked || !isDrill(a)) && !isFragment(a) && passesFilters(a);
+// Not a replay fragment, and a drill only with "Show drills"
+function listable(a) {
+	return ($('show-drills').checked || !isDrill(a)) && !isFragment(a);
 }
 
-// Finish times only compare on one map: with Map on All, "Fastest finish" is greyed out and the list
-// sorts newest first. The saved choice comes back once a map is picked.
-function syncSort() {
+// Listed: listable and through the filters
+function shown(a) {
+	return listable(a) && passesFilters(a);
+}
+
+// Finish times only compare on one map: with Map on All, "Fastest finish" is greyed out. A sort that
+// orders the listed attempts the same as one above it in the menu is greyed out too (Fastest finish
+// with Tag on PB is Newest first). A greyed out saved choice falls back to Newest first and comes
+// back once it orders differently again.
+function syncSort(visible) {
 	const sel = $('f-sort');
 	const one = !!$('f-map').value;
-	const opt = [...sel.options].find((o) => o.value === 'finish');
-	opt.disabled = !one;
-	opt.textContent = one ? 'Fastest finish' : 'Fastest finish (pick a map)';
+	const orders = [];
+	for (const o of sel.options) {
+		const [, label] = LIST_SORTS.find((s) => s[0] === o.value);
+		const order = sortHeads(visible, o.value).map((a) => `${a.dir}/${a.id}`).join('|');
+		const same = orders.find((x) => x.order === order);
+		orders.push({ order, label });
+		if (o.value === 'finish' && !one) {
+			o.disabled = true;
+			o.textContent = `${label} (pick a map)`;
+		} else {
+			o.disabled = !!same;
+			o.textContent = same ? `${label} (same as ${same.label})` : label;
+		}
+	}
 	const want = localStorage.getItem(SORT_KEY) || 'newest';
-	sel.value = want === 'finish' && !one ? 'newest' : [...sel.options].some((o) => o.value === want) ? want : 'newest';
+	const opt = [...sel.options].find((o) => o.value === want);
+	sel.value = opt && !opt.disabled ? want : 'newest';
 	return sel.value;
 }
 
@@ -200,18 +238,17 @@ function renderList() {
 	box.replaceChildren();
 	if (!list.length) box.textContent = 'No attempts saved yet.';
 	$('drill-count').textContent = list.filter(isDrill).length;
-	// the open attempt stays listed even when it is a hidden drill or filtered out
+	// the open attempt stays listed when it is a hidden drill, not when the filters leave it out
 	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');
-	const visible = list.filter((a) => `${a.dir}/${a.id}` === openKey || shown(a));
-	const hasShown = (m) => visible.some((a) => a.dir === m && shown(a));
+	const visible = list.filter((a) => shown(a) || (`${a.dir}/${a.id}` === openKey && !isFragment(a) && passesFilters(a)));
+	syncFilters();
 	const total = list.filter((a) => !isFragment(a)).length;
 	const hits = list.filter(shown).length;
 	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
 	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
-	// newest attempt's map first, whatever the sort; a map listed only for the open attempt goes last
-	const maps = [...new Set(visible.map((a) => a.dir))].sort((x, y) => !hasShown(x) - !hasShown(y));
-	const sorted = sortHeads(visible, syncSort());
+	const maps = [...new Set(visible.map((a) => a.dir))]; // newest attempt's map first, whatever the sort
+	const sorted = sortHeads(visible, syncSort(visible));
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
