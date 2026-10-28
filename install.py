@@ -17,6 +17,7 @@ The game folder comes from MOMENTUM_DIR or Steam's library folders, or --game.
 --uninstall removes the recorder, the autoexec block and the link.
 """
 import argparse
+import json
 import os
 import re
 import shutil
@@ -38,6 +39,37 @@ FOLDER = "0-strafe-review"  # in custom/; sorts before other mods, so our timer.
 OLD_FOLDERS = ["strafe-review"]  # before 2026-10-28; removed on install
 TIMER = Path("panorama") / "layout" / "hud" / "timer.xml"
 INCLUDE = '<include type="module" src="file://{scripts}/hud/strafe-review.ts" />'
+RECORDER = Path("panorama") / "scripts" / "hud" / "strafe-review.ts"
+SETTINGS = steam.data_dir() / "settings.json"  # {"inGameLine": bool}, set on the review page
+SHOW_LINE = re.compile(r"^const SHOW_LINE = (true|false);", re.MULTILINE)
+
+
+def settings():
+    try:
+        got = json.loads(SETTINGS.read_text())
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_setting(key, value):
+    got = settings()
+    got[key] = value
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(SETTINGS, json.dumps(got, indent=2) + "\n")
+
+
+def apply_settings(game):
+    """Write the page's settings into the installed recorder; panorama_reload or a game restart applies them.
+    Returns False when the recorder isn't installed."""
+    ts = Path(game) / "custom" / FOLDER / RECORDER
+    try:
+        text = ts.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    show = "true" if settings().get("inGameLine") else "false"
+    write_atomic(ts, SHOW_LINE.sub(f"const SHOW_LINE = {show};", text))
+    return True
 
 
 def without_block(lines):
@@ -172,6 +204,7 @@ def install(game):
     shutil.copytree(ROOT / "recorder" / "panorama", dest / "panorama")
     (dest / TIMER).parent.mkdir(parents=True, exist_ok=True)
     (dest / TIMER).write_text(text, encoding="utf-8", errors="surrogateescape", newline="")
+    apply_settings(game)
     print(f"installed to {dest} (timer.xml based on {base})")
     set_autoexec(game, add=True)
     link_launcher(add=True)

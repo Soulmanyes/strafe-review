@@ -24,7 +24,10 @@ jobs:
         timeout-minutes: 5
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path dist/strafe-review.exe, WINDOWS.txt, LICENSE -DestinationPath strafe-review-windows.zip
+        run: |
+          # the licence of the Python build bundled in the exe, with its libraries' notices
+          python -c "import shutil, sys, pathlib; shutil.copy(pathlib.Path(sys.base_prefix) / 'LICENSE.txt', 'PYTHON-LICENSE.txt')"
+          Compress-Archive -Path dist/strafe-review.exe, WINDOWS.txt, LICENSE, THIRD-PARTY-NOTICES.txt, PYTHON-LICENSE.txt -DestinationPath strafe-review-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: strafe-review-windows
@@ -34,4 +37,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" strafe-review-windows.zip --title "$GITHUB_REF_NAME" --generate-notes || gh release upload "$GITHUB_REF_NAME" strafe-review-windows.zip --clobber
+        run: |
+          # a tag that isn't VERSION would make every copy see an update that never takes
+          version=$(python -c "import sys; sys.path.insert(0, 'collector'); import updater; print(updater.VERSION)")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then echo "tag $GITHUB_REF_NAME but VERSION $version"; exit 1; fi
+          gh release create "$GITHUB_REF_NAME" strafe-review-windows.zip --title "$GITHUB_REF_NAME" --generate-notes || gh release upload "$GITHUB_REF_NAME" strafe-review-windows.zip --clobber

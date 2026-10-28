@@ -24,6 +24,14 @@ Routes:
                              recorder and autoexec.cfg block in place, the log (exists, size,
                              last change), what the collector has seen, its last error
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
+  GET /api/update            this version, a newer release if there is one, auto mode, whether this
+                             copy can install it (the Windows exe) or only reports it (the repo)
+  POST /api/update/check     ask GitHub now
+  POST /api/update/install   install the newer release and start again on it
+  POST /api/update/auto      {"auto": bool}: install updates by itself
+  GET /api/settings          {"inGameLine": bool}
+  POST /api/settings         {"inGameLine": bool}: saved, and written into the installed recorder
+                             (answers {"applied": false} when it isn't installed)
   POST /api/stop             stops this program (the page's Stop button); it starts again with the game
                              or by hand
   POST /api/meta/<map>/<id>  {"note": str, "tags": [str]}: sets the attempt's note and tags, answers
@@ -43,8 +51,11 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "collector"))
-import collector  # found through the path above
+sys.path[:0] = [str(Path(__file__).resolve().parent.parent / "collector"), str(Path(__file__).resolve().parent.parent)]
+import updater  # found through the path above
+
+import collector
+import install
 
 STATIC = collector.ROOT / "viewer" / "static"
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
@@ -72,6 +83,11 @@ SPECTATE_MIN_AIR = 20  # same as static/data.js
 POLL = 0.5  # seconds between store scans for /api/events
 COLLECT_RETRY = 5  # seconds before the collector thread starts over after an error
 collect_error = None  # {"time", "text"} of the collector thread's last error, for /api/status
+UPDATES = None  # updater.Updater, made in main()
+UPDATE_LOOP = 3600  # seconds between looks at updates (GitHub itself is asked every updater.CHECK_EVERY)
+QUIET_FOR = 600  # auto mode installs only when the game log has been still this long (no game being played)
+RESTART = None  # set by strafe_review.py: starts a new copy after an update; None from the repo
+restart_after = False  # set when an update was installed: main() starts the new copy once the port is free
 PING = 15  # seconds between keep-alive comments
 
 
@@ -332,6 +348,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parts = self.path.split("?", 1)[0].strip("/").split("/")
+        if parts[:2] == ["api", "update"] and len(parts) == 3:
+            if not self.local_request():
+                return self.fail(403, "forbidden")
+            return self.update_action(parts[2])
+        if parts == ["api", "settings"]:
+            if not self.local_request():
+                return self.fail(403, "forbidden")
+            try:
+                size = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(size)) if 0 < size <= MAX_BODY else None
+                line = body["inGameLine"]
+                if not isinstance(line, bool):
+                    raise TypeError
+            except (ValueError, TypeError, KeyError):
+                return self.fail(400, 'expected {"inGameLine": true or false}')
+            install.save_setting("inGameLine", line)
+            applied = bool(MOM_DIR) and install.apply_settings(MOM_DIR)
+            return self.send(200, json.dumps({**install.settings(), "applied": applied}).encode(), "application/json")
         if parts == ["api", "stop"]:
             if not self.local_request():
                 return self.fail(403, "forbidden")
@@ -362,6 +396,36 @@ class Handler(BaseHTTPRequestHandler):
             return self.fail(500, f"could not save: {e}")
         self.send(200, json.dumps(entry).encode(), "application/json")
 
+    def update_action(self, action):
+        global restart_after
+        if action == "check":
+            try:
+                UPDATES.check(force=True)
+            except OSError:
+                pass  # kept in info()["error"]
+        elif action == "auto":
+            try:
+                size = int(self.headers.get("Content-Length") or 0)
+                UPDATES.auto = bool(json.loads(self.rfile.read(size) if 0 < size <= MAX_BODY else b"{}").get("auto"))
+            except (ValueError, AttributeError):
+                return self.fail(400, "bad body")
+        elif action == "install":
+            latest = UPDATES.info()["latest"]
+            if not latest:
+                return self.fail(409, "no newer release")
+            try:
+                UPDATES.install(latest)
+            except RuntimeError as e:
+                return self.fail(500, str(e))
+            print(f"Strafe Review: updated to {latest['tag']}, starting again", flush=True)
+            restart_after = True
+            self.send(200, json.dumps(UPDATES.info()).encode(), "application/json")
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return None
+        else:
+            return self.fail(404, "not found")
+        return self.send(200, json.dumps(UPDATES.info()).encode(), "application/json")
+
     def do_GET(self):
         parts = self.path.split("?", 1)[0].strip("/").split("/")
         if parts == [""]:
@@ -377,6 +441,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, path.read_bytes(), ctype)
         elif parts == ["api", "events"]:
             return self.events()
+        elif parts == ["api", "settings"]:
+            return self.send(200, json.dumps({"inGameLine": bool(install.settings().get("inGameLine"))}).encode(), "application/json")
+        elif parts == ["api", "update"]:
+            return self.send(200, json.dumps(UPDATES.info()).encode(), "application/json")
         elif parts == ["api", "status"]:
             return self.send(200, json.dumps(status(self)).encode(), "application/json")
         elif parts == ["api", "mouse"]:
@@ -425,6 +493,37 @@ def status(handler):
     }
 
 
+def playing():
+    """The game wrote its log lately: don't restart (a new console window, a reinstall) mid-session."""
+    try:
+        return Handler.log is not None and time.time() - os.stat(Handler.log).st_mtime < QUIET_FOR
+    except OSError:
+        return False
+
+
+def update_loop(server):
+    """Look for updates now and then; in auto mode install one and start again on it."""
+    global restart_after
+    time.sleep(20)  # let the game and the page start first
+    while True:
+        try:
+            latest = UPDATES.check()
+        except OSError:
+            latest = None
+        if latest and UPDATES.auto and UPDATES.can_install and RESTART and not UPDATES.failed(latest) \
+                and not playing():
+            try:
+                UPDATES.install(latest)
+            except RuntimeError as e:
+                print(f"Strafe Review: update to {latest['tag']} failed: {e}", file=sys.stderr, flush=True)
+            else:
+                print(f"Strafe Review: updated to {latest['tag']} by itself, starting again", flush=True)
+                restart_after = True
+                server.shutdown()
+                return
+        time.sleep(UPDATE_LOOP if not latest else 300)  # a waiting update is retried once the game is quiet
+
+
 def collect(log, store):
     """Run the collector for good; an error is printed and the collector starts over, so the page never
     keeps showing while nothing is saved. Starting over is safe: attempts already on disk are skipped."""
@@ -460,8 +559,9 @@ def main(argv=None):
     Handler.game_cfg = Path(args.game_cfg or os.path.join(args.game, "cfg", "config.cfg"))
     if args.log is None and args.game:
         args.log = os.path.join(args.game, "yaw.log")
-    global MOM_DIR
+    global MOM_DIR, UPDATES
     MOM_DIR = Handler.game_cfg.parent.parent
+    UPDATES = updater.Updater()
     try:
         server = Server(("127.0.0.1", args.port), Handler)
     except OSError as e:
@@ -471,7 +571,8 @@ def main(argv=None):
         Handler.log = Path(args.log)
         threading.Thread(target=collect, args=(args.log, Handler.store), daemon=True).start()
     url = f"http://127.0.0.1:{args.port}/"
-    print(f"Strafe Review viewer on {url} (attempts from {args.store})", flush=True)
+    print(f"Strafe Review {updater.VERSION} viewer on {url} (attempts from {args.store})", flush=True)
+    threading.Thread(target=update_loop, args=(server,), daemon=True).start()
     if not args.no_browser:
         # only the copy that got the port opens a tab, so a second start doesn't add one
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
@@ -479,6 +580,9 @@ def main(argv=None):
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    server.server_close()  # free the port before a new copy takes it
+    if restart_after and RESTART:
+        RESTART()
 
 
 if __name__ == "__main__":

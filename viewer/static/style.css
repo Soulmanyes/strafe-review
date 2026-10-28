@@ -304,3 +304,19 @@ body.stopped { align-items: center; justify-content: center; }
 .status-row.ok b { color: var(--own); }
 .status-row.bad { border-color: #c0564f; }
 .status-row.bad b { color: #e06c64; }
+
+/* Updates (update.js): sidebar foot on the main page, banner on every page */
+#ingame, #updates { display: grid; gap: 6px; }
+.side-foot { margin-top: auto; padding: 10px 12px; border-top: 1px solid var(--border); display: grid; gap: 6px; font-size: 12px; }
+.upd-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.upd-line button { padding: 3px 8px; font-size: 12px; }
+.upd-auto { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+#upd-banner {
+	position: fixed; right: 16px; bottom: 16px; z-index: 50; max-width: 520px;
+	display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+	background: var(--card-hi); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px;
+	box-shadow: 0 4px 16px #0008;
+}
+#upd-banner a { color: var(--accent); }
+#upd-banner .upd-go { border-color: var(--accent); }
+#upd-banner .upd-close { margin-left: auto; padding: 2px 8px; }

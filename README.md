@@ -36,4 +36,9 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 3. Or put it in Momentum Mod's Steam launch options instead: `"C:\path\to\strafe-review.exe" %command%`. It then starts the server in the background with the game and opens the page when the game quits. The server keeps running after that, without a window; the Stop button on the page ends it.
 4. Restart the game after the first start, so the `autoexec.cfg` block is read. Attempts are kept in `%LOCALAPPDATA%\strafe-review\attempts`.
 
+## Updates and settings
+
+- The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. A copy running from this repo only reports new versions: `git pull` brings them.
+- **Show the jump-1 line in game** (bottom left of the main page) turns on the in-game line after jump 1: landing speed, gain %, gain per strafe and the biggest mistake. It is off by default so it doesn't land on top of anyone's own HUD. Type `panorama_reload` in the game console after changing it.
+
 License: CC0 1.0 (see [LICENSE](LICENSE)).

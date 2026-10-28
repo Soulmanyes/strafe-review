@@ -28,6 +28,14 @@ To undo: delete custom\0-strafe-review and that block.
 Attempts are saved in %LOCALAPPDATA%\strafe-review\attempts. Everything the program prints also
 goes to %LOCALAPPDATA%\strafe-review\strafe-review.log.
 
+Updates: the page shows a banner when a new version is out, with an Update button; it installs it
+and starts again by itself. "Install updates automatically" at the bottom left of the main page
+skips the button.
+
+The jump-1 line in game (landing speed, gain %, per strafe, biggest mistake, top middle of the
+screen) is off by default. Turn it on with "Show the jump-1 line in game" at the bottom left of the
+main page, then type panorama_reload in the game console.
+
 Nothing shows up on the page? While no attempts are saved, the page shows a "Setup check" box on
 the left (game folder, recorder, autoexec.cfg, the game's yaw.log, what was read from it). A
 screenshot of it says where it stops.

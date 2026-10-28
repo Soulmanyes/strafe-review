@@ -11,8 +11,12 @@ Run by .github/workflows/windows.yml on the Windows build; it runs on Linux too.
    exits with an error (the SO_REUSEADDR check on Windows).
 3. Launch option: runs the "game", hands back its exit code, leaves the server running, opens the page.
 4. The page's Stop button (POST /api/stop) ends that background server.
+5. Update: a fake GitHub answers with v99.0.0 and a zip of this exe; a copy of the program in its own
+   folder downloads it, swaps the exe and starts again. The new copy is the same build (1.0.0), so it
+   must mark v99.0.0 as failed, which keeps auto mode from looping.
 The browser is a stand-in that writes the URL to a file.
 """
+import http.server
 import json
 import os
 import shutil
@@ -20,8 +24,11 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 PORT = 8790
@@ -83,6 +90,39 @@ def write_attempt(path):
             time.sleep(0.6)
         f.write(f"[panorama] SRREC {SMOKE_ID} end n={n} chars={len(data)}\r\n".encode())
         time.sleep(3)  # still open while the collector reads, like the game
+
+
+def post(path, body=None):
+    req = urllib.request.Request(URL.rstrip("/") + path, data=json.dumps(body or {}).encode(), method="POST",
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def fake_github(zip_path):
+    """A local stand-in for GitHub's releases/latest and the release asset; returns its port."""
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            port = self.server.server_address[1]
+            if self.path == "/latest":
+                body = json.dumps({"tag_name": "v99.0.0", "html_url": "", "assets": [
+                    {"name": "strafe-review-windows.zip", "browser_download_url": f"http://127.0.0.1:{port}/asset"}]}).encode()
+            else:
+                body = zip_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv.server_address[1]
 
 
 def stop_all(exe):
@@ -149,6 +189,12 @@ def main():
         ours = game / "custom" / "0-strafe-review" / "panorama"
         if not (ours / "scripts" / "hud" / "strafe-review.ts").is_file():
             fail("recorder not installed")
+        if "const SHOW_LINE = false;" not in (ours / "scripts" / "hud" / "strafe-review.ts").read_text():
+            fail("the in-game line isn't off by default")
+        code, body = post("/api/settings", {"inGameLine": True})
+        if code != 200 or not json.loads(body).get("applied") \
+                or "const SHOW_LINE = true;" not in (ours / "scripts" / "hud" / "strafe-review.ts").read_text():
+            fail(f"turning the in-game line on: {code} {body!r}")
         timer = (ours / "layout" / "hud" / "timer.xml").read_text()
         if "mod-panoDev" not in timer or timer.count("strafe-review.ts") != 1:
             fail(f"timer.xml isn't panoDev's with our include:\n{timer}")
@@ -185,7 +231,7 @@ def main():
         if opened(tmp)[-1:] != [URL] or len(opened(tmp)) != 3:
             fail(f"browser calls: {opened(tmp)}")
         log = tmp / "data" / "strafe-review" / "strafe-review.log"
-        if "Strafe Review viewer on" not in (log.read_text(errors="replace") if log.exists() else ""):
+        if "viewer on http" not in (log.read_text(errors="replace") if log.exists() else ""):
             fail(f"the background copy's output isn't in {log}")
         print("   ok: exit code 3 handed back, background server running, page opened, output in strafe-review.log")
 
@@ -199,6 +245,38 @@ def main():
         if get("/")[0] is not None:
             fail("server still answers after /api/stop")
         print("   ok: the background server ended")
+
+        print("5. update")
+        app = tmp / "app"
+        app.mkdir()
+        copy = app / exe.name
+        shutil.copy2(exe, copy)
+        with zipfile.ZipFile(tmp / "release.zip", "w") as z:
+            z.write(exe, "strafe-review.exe")
+        api = fake_github(tmp / "release.zip")
+        env2 = {**env, "STRAFE_REVIEW_UPDATE_API": f"http://127.0.0.1:{api}/latest"}
+        before = copy.stat().st_mtime_ns
+        subprocess.Popen([copy, "--serve"], env=env2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        wait_serving()
+        post("/api/update/check")
+        info = json.loads(get("/api/update")[1])
+        if not (info.get("latest") and info["latest"]["tag"] == "v99.0.0" and info.get("canInstall")):
+            fail(f"/api/update after the check: {info}")
+        code, body = post("/api/update/install")
+        if code != 200:
+            fail(f"install answered {code} {body!r}")
+        time.sleep(3)
+        wait_serving()
+        state = json.loads((tmp / "data" / "strafe-review" / "updates.json").read_text())
+        if state.get("failed") != "v99.0.0" or copy.stat().st_mtime_ns == before:
+            fail(f"after the update: exe swapped {copy.stat().st_mtime_ns != before}, state {state}")
+        end = time.time() + 30
+        while (app / (exe.name + ".old")).exists() and time.time() < end:
+            time.sleep(1)
+        if (app / (exe.name + ".old")).exists():
+            fail("the old exe wasn't cleaned up on the new start")
+        stop_all(copy)
+        print("   ok: downloaded, swapped the exe, started again, marked the same-version release failed")
     finally:
         stop_all(exe)
         shutil.rmtree(tmp, ignore_errors=True)

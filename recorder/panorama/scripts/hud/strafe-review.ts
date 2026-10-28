@@ -353,6 +353,9 @@ function onTargetChange(why: string) {
 // Each line also goes to yaw.log as "SRLINE <id> <json>", which the collector ignores.
 
 const LINE_TAG = 'SRLINE';
+// Off by default, so it never lands on top of someone's own HUD. install.py rewrites this line from the
+// viewer's "Show the jump-1 line in game" switch; the SRLINE log line is written either way.
+const SHOW_LINE = false;
 const SHOW = { landing: true, gain: true, strafes: true, mistake: true };
 const LINE_SECONDS = 4;
 // The 5-tick turn average reads 2 rows ahead, so the strafes are split a few rows past the landing
@@ -742,7 +745,7 @@ function workOutLine(a: Attempt) {
 	const top = mistakes[0];
 	const head = [SHOW.landing ? `J1 ${j.land.toFixed(0)} u/s` : '', SHOW.gain ? `${j.pct.toFixed(2)} %` : ''].filter(Boolean).join('  ·  ');
 	const mistake = SHOW.mistake && top ? `${top.text} (-${top.lost.toFixed(1)} u/s)` : '';
-	if (head || (SHOW.strafes && pcts.length) || mistake) showLine(head, SHOW.strafes ? pcts : [], mistake);
+	if (SHOW_LINE && (head || (SHOW.strafes && pcts.length) || mistake)) showLine(head, SHOW.strafes ? pcts : [], mistake);
 	$.Msg(
 		`${LINE_TAG} ${a.id} ${JSON.stringify({
 			s: j.s,
