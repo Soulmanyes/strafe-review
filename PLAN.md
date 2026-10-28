@@ -305,7 +305,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - **Sync (keys vs turn):** A or D alone matching the turn side on strafing ticks, with `+left`/`+right` ticks out. Each recording's keys are shifted by the lag (-10..10 ticks) that matches best. Replays come out at 5-7, own runs at 1, measured the same way for all. Replay sync is marked approximate. This is not the game's own sync number.
   - **Angle:** the drill page's median `yawRatio` rule.
   - **Strafes per landed jump** and **% of strafing ticks turning**.
-  - **Run:** end, jumps landed and missed ticks. A replay that ended `replaced` reads "Replay stopped at X s", never as a finish.
+  - **Run:** end, jumps landed and missed ticks. A replay that ended `replaced` reads "Replay stopped at X s", never as a finish. (Since 2026-10-28 a replay played to the end is a finish, see "Replay finishes".)
   - **Jump 1:** takeoff, landing and gain %.
   - **Speed:** max, average and at the end. "At the end" is noted as at the finish or at the end of the recording.
   - **Mistakes:** `runChecks()` with the main page's settings. For replays the key checks and weak takeoff are not run, and the table says "not run (replay)" rather than 0.
@@ -461,6 +461,15 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Main page:** search and sort sit at the top of the sidebar filters. The search counts as a filter ("N of M shown", the drill count, Clear filters, which also empties it). Sorting happens inside each map group; the groups keep their order (newest attempt's map first). "Fastest finish" needs the Map filter on one map (owner, 2026-10-28: on All it put one glacial replay at the top and the ambience finishes far down); on All it is greyed out and the list sorts newest first, and the saved choice comes back when a map is picked. On load the newest listed attempt still opens, whatever the sort. Sort kept in localStorage `strafe-review-sort`.
 - **/compare:** search box and Sort select in the Recordings header. Picked recordings stay listed even when the search would hide them. Quick picks are unaffected. Sort kept in `strafe-review-compare-sort`.
 - **Check:** `node viewer/check_listsort.js [--url http://127.0.0.1:8765]`: hand-made cases (order per sort, missing values last, ties, search words ANDed over tag, auto tag, note, player, label), then every sort on the running viewer's heads (265: missing values all last) and a search for a real auto tag.
+
+#### Replay finishes (2026-10-28)
+
+- **Problem (owner):** player A's bhop_glacial replay played to the end but never counted as finished. No replay ever did: all ended `replaced`.
+- **Why:** when a replay reaches its end and loops, Momentum fires `OnObservedTimerReplaced` one tick before the observed timer would read FINISHED. The recorder ends the attempt there. Every full replay stopped exactly one tick (0.01 s) before the run time in its replay file (player A 32.555 vs 32.565 s, player F 32.765 vs 32.775 s, all 7 full ambience replays the same).
+- **Fix (server, owner's pick over a recorder change):** `replay_finished()` in head() reads the run time from the replay's `.mtv` header (`replayFile`, relative to the Momentum folder next to `--game-cfg`). A `replay` head that ended `replaced` within 2 ticks of it becomes `reason: finish` with `runTime` = the file's time; the recorded end is kept in `recordedRunTime`. Old recordings are fixed too; nothing in the attempt files changes.
+- **Header layout** (worked out from saved online replays, formats 1 and 2 alike): `MMTV`, int32 version, int64 date, map name [64], map hash [41], uint16, float tick interval at 0x7b, uint64 SteamID, player name [33], one byte, run time as a double at 0xa9. Checked by the magic, version 1 or 2 and the interval matching the attempt; otherwise the head is left alone.
+- **Result on the store:** 9 replays become finishes; stopped ones (player C at 5.9 s, player D and player E at 0 s) stay "Replay stopped". Spectated live players are untouched.
+- Needs a viewer restart (server.py change).
 
 #### Run stats v1 (2026-10-28)
 

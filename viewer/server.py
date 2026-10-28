@@ -26,6 +26,7 @@ import json
 import math
 import os
 import re
+import struct
 import sys
 import threading
 import time
@@ -42,6 +43,13 @@ CVAR = re.compile(r'^\s*(sensitivity|m_yaw)\s+"([^"]*)"', re.MULTILINE)
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
+MOM_DIR = Path(os.path.expanduser(GAME_CFG)).parent.parent  # replayFile paths are relative to this
+# .mtv header (formats 1 and 2 alike here, worked out from online replays, 2026-10-28): "MMTV", int32 version,
+# int64 date, map name [64], map hash [41], uint16, float tick interval at 0x7b, uint64 SteamID,
+# player name [33], one byte, then the run time as a double at 0xa9
+MTV_INTERVAL = 0x7B
+MTV_RUN_TIME = 0xA9
+REPLAY_FINISH_TICKS = 2  # a replay that stopped this close to its run time was played to the end
 META_FILE = "meta.json"  # {"version": 1, "attempts": {"<dir>/<id>": {"note": str, "tags": [str]}}}
 _meta_lock = threading.Lock()
 MAX_BODY = 16384
@@ -88,6 +96,39 @@ def jump1_takeoff(data):
     landed = sum(1 for j in jumps[jumps.index(j1):] if j[1] <= end and j[1] < n)
     land = round(math.hypot(vx[j1[1] - 1], vy[j1[1] - 1]), 2) if j1[1] <= end and j1[1] < n else None
     return round(math.hypot(vx[j1[0]], vy[j1[0]]), 2), land, landed
+
+
+def replay_run_time(data):
+    """The run time stored in the attempt's replay file, or None when the file is gone or doesn't look
+    like a format 1 or 2 replay with the attempt's tick interval."""
+    rel = data.get("replayFile")
+    if not rel or rel.startswith("/") or ".." in Path(rel).parts:
+        return None
+    try:
+        with open(MOM_DIR / rel, "rb") as f:
+            b = f.read(MTV_RUN_TIME + 8)
+    except OSError:
+        return None
+    if len(b) < MTV_RUN_TIME + 8 or b[:4] != b"MMTV" or struct.unpack_from("<i", b, 4)[0] not in (1, 2):
+        return None
+    interval = struct.unpack_from("<f", b, MTV_INTERVAL)[0]
+    t = struct.unpack_from("<d", b, MTV_RUN_TIME)[0]
+    if not data.get("interval") or abs(interval - data["interval"]) > 1e-6 or not 0 < t < 86400:
+        return None
+    return t
+
+
+def replay_finished(data):
+    """Momentum swaps a replay's timer (OnObservedTimerReplaced) when it loops, a tick before the timer
+    would read FINISHED, so the recorder saves a replay played to the end as 'replaced'. Such a replay
+    becomes a finish with the replay file's run time; the recorded end stays in recordedRunTime."""
+    if data.get("label") != "replay" or data.get("reason") != "replaced" or not data.get("runTime"):
+        return
+    t = replay_run_time(data)
+    if t is not None and t - data["runTime"] <= REPLAY_FINISH_TICKS * data["interval"] + 1e-6:
+        data["recordedRunTime"] = data["runTime"]
+        data["reason"] = "finish"
+        data["runTime"] = t
 
 
 def spectated(data):
@@ -139,6 +180,7 @@ def head(path):
         data = json.load(f)
     data["j1Takeoff"], data["j1Land"], data["landed"] = jump1_takeoff(data)
     data["runGaps"] = run_gaps(data)
+    replay_finished(data)
     if spectated(data):
         data["label"] = "spectate"
     rows = data.pop("rows", "")
@@ -336,6 +378,8 @@ def main():
     args = ap.parse_args()
     Handler.store = Path(args.store)
     Handler.game_cfg = Path(args.game_cfg)
+    global MOM_DIR
+    MOM_DIR = Handler.game_cfg.parent.parent
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Strafe Review viewer on http://127.0.0.1:{args.port}/ (attempts from {args.store})")
     try:

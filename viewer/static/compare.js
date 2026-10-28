@@ -87,7 +87,8 @@ function labelChip(h) {
 	return el;
 }
 
-// How the recording ended, in words. A replay that ended 'replaced' was stopped, not finished.
+// How the recording ended, in words. A replay that ended 'replaced' was stopped, not finished (the server
+// turns a replay played to the end into 'finish', see replay_finished()).
 function endText(h) {
 	if (h.reason === 'finish' && h.runTime) return `Finished ${h.runTime.toFixed(2)} s`;
 	const r = REASONS[h.reason] || h.reason || '?';
