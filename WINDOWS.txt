@@ -1,0 +1,51 @@
+Strafe Review for Windows (test build)
+=====================================
+
+Strafe Review records your Momentum Mod bhop attempts and shows them on a review page in your
+browser (graphs of each jump, mistakes, comparisons). It only reads the game's console log and adds
+a HUD script; it sends nothing anywhere. The page runs on your own PC at http://127.0.0.1:8765/
+
+This is an untested build. Windows may warn about it, because the exe isn't signed.
+
+
+Setup
+-----
+
+1. Unzip this folder somewhere you keep it, for example Documents\strafe-review.
+2. Double-click strafe-review.exe. A console window opens; it prints where it installed itself
+   and then opens the review page in your browser. Keep the window open while playing.
+3. Restart Momentum Mod if it was running, so it reads the new lines in cfg\autoexec.cfg.
+
+What it changes in the game folder:
+- adds the folder custom\strafe-review (the HUD script that records attempts)
+- adds a block between "// strafe-review begin" and "// strafe-review end" to cfg\autoexec.cfg
+  (the original is kept as cfg\autoexec.cfg.bak-strafe-review)
+To undo: delete custom\strafe-review and that block.
+
+Attempts are saved in %LOCALAPPDATA%\strafe-review\attempts.
+
+
+Test checklist
+--------------
+
+Please note what you see for each step. Screenshots, or a copy of the console window's text, help.
+
+1. Windows warnings: did SmartScreen ("Windows protected your PC") or your antivirus say anything
+   when you unzipped or started the exe? What exactly?
+2. First start: what did the console window print? Did the review page open?
+3. Play: restart Momentum, play a few attempts on any bhop map (finish some, reset some). Do they
+   show up on the review page (it updates by itself)?
+4. Double-click strafe-review.exe again while the first one is still running. Expected: only a
+   new browser tab opens, nothing else starts.
+5. Close the console window (this stops it). Then try the Steam way:
+   - In Steam, right-click Momentum Mod > Properties > Launch options, and put in
+       "C:\full\path\to\strafe-review.exe" %command%
+     (with the quotes, and your real path to the exe).
+   - Start the game from Steam. Does a console window show up and stay over or behind the game?
+   - Play an attempt or two, then quit the game. Does the review page open?
+   - After quitting, does Steam still show Momentum Mod as "Running" or "Stop"?
+   - Is strafe-review.exe still in Task Manager? (It's meant to stay running in the background;
+     end it there when you're done.)
+6. Afterwards, remove the launch option again if you don't want to keep it.
+
+Thanks for testing!

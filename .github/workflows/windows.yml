@@ -1,5 +1,6 @@
 # Builds strafe-review.exe on Windows (PyInstaller can't cross-build), smoke-tests it (smoke_test.py)
-# and zips it with the README and licence. Run by hand (Actions > windows > Run workflow) for a test build, kept as a workflow
+# and zips it with WINDOWS.txt (setup and a tester checklist; README.md links private notes) and the
+# licence. Run by hand (Actions > windows > Run workflow) for a test build, kept as a workflow
 # artifact; a pushed v* tag also attaches the zip to that tag's GitHub release.
 name: windows
 on:
@@ -23,7 +24,7 @@ jobs:
         timeout-minutes: 5
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path dist/strafe-review.exe, README.md, LICENSE -DestinationPath strafe-review-windows.zip
+        run: Compress-Archive -Path dist/strafe-review.exe, WINDOWS.txt, LICENSE -DestinationPath strafe-review-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: strafe-review-windows
