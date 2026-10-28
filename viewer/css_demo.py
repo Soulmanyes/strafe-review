@@ -162,7 +162,11 @@ def main():
         c, v = cmds[i], vel[k]
         wx, wy = wish(c)
         vz = 0.0 if abs(v[2]) < 0.01 else v[2]  # the viewer finds ground by vz == 0
-        rows.append(f"{k},0,0,0,0,{v[0]:.4f},{v[1]:.4f},{vz:.4f},{c.get('yaw', 0):.4f},{c.get('buttons', 0)},{wx:.3f},{wy:.3f}")
+        # tick stats as Momentum gives them (gain = speed change, ideal = best possible), so data.js treats this
+        # as the player's own run and not as a spectated one
+        s0, s1 = math.hypot(*vel[k - 1][:2]), math.hypot(*v[:2])
+        gain, ideal = (s1 - s0, math.sqrt(s0 * s0 + AIR_ADD * AIR_ADD) - s0) if vz else (0.0, 0.0)
+        rows.append(f"{k},{gain:.3f},{ideal:.3f},0,0,{v[0]:.4f},{v[1]:.4f},{vz:.4f},{c.get('yaw', 0):.4f},{c.get('buttons', 0)},{wx:.3f},{wy:.3f}")
     out = {
         "format": 1,
         "id": "cssdemo",

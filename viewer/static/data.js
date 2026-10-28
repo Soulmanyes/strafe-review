@@ -90,6 +90,11 @@ function parse(a) {
 		if (d.vx[i] !== d.vx[i - 1] || d.vy[i] !== d.vy[i - 1]) changed++;
 	}
 	d.coarse = d.derived && airRows >= SPECTATE_MIN_AIR && changed < airRows / 2;
+	// CS:S gain: a recording's wish velocity is used only when it has any in the air (it might read 0 for other
+	// players), and keys only when they are the player's own and line up with the moves (replay keys run ahead)
+	d.hasWish = false;
+	for (let i = 0; i < n && !d.hasWish; i++) if (!d.ground[i] && Math.hypot(d.wx[i], d.wy[i]) > 0.1) d.hasWish = true;
+	d.ownKeys = !isOther(a) && !d.coarse;
 	if (d.derived) {
 		for (let i = 0; i < n; i++) {
 			const v = i > 0 ? d.speed[i - 1] : NaN;
@@ -201,11 +206,12 @@ function ssjRow(d, i, fit, takeoff) {
 	// recordings since 2026-10-28 carry the game's own wish velocity: its direction is exact for every row
 	// (checked against the velocity change: p within 0.02 u/s), so no angles are needed
 	const wl = Math.hypot(d.wx[i], d.wy[i]);
-	const recorded = Number.isFinite(wl);
+	const recorded = d.hasWish && Number.isFinite(wl);
 	const wish = recorded && wl > 0.1 ? [d.wx[i] / wl, d.wy[i] / wl] : null;
 	const lagged = recorded ? wish : fit.err <= SSJ_FIT_MAX && i + fit.lag < d.n ? wishDir(d, i + fit.lag, i) : null;
 	if (takeoff) {
 		if (!recorded && (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n)) return { c: 0, ok: false };
+		if (!lagged && !recorded && !d.ownKeys) return { c: 0, ok: true }; // someone else's keys: no-key not trusted
 		return score(lagged);
 	}
 	const dx = d.vx[i] - d.vx[i - 1];
@@ -219,7 +225,7 @@ function ssjRow(d, i, fit, takeoff) {
 	if (recorded) return score(wish);
 	const b = d.buttons[i];
 	const keyed = (b & BIT.FORWARD ? 1 : 0) - (b & BIT.BACK ? 1 : 0) || (b & BIT.MOVERIGHT ? 1 : 0) - (b & BIT.MOVELEFT ? 1 : 0);
-	if (!keyed) return score(null);
+	if (!keyed && d.ownKeys) return score(null);
 	return { c: (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD, ok: true };
 }
 
