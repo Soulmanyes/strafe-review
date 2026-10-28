@@ -227,8 +227,11 @@ function runEnd(a, d) {
 // (a row after missed ticks counts for all of them). The timer start is (0, 0). A teleport (speed from
 // 100+ to standstill or back in one tick) breaks the line: after it the path starts again at (0, 0), and
 // rows before the last teleport ahead of the timer start (a replay's previous run) get no position.
-// The path is turned so the way out of the start zone points up (+y): the direction from the timer start
-// to the first row 32+ units away, or the velocity at the timer start when it never gets that far.
+// The path is turned so the way out of the start zone points up (+y). The first few hundred units bend with
+// the prestrafe and jump 1, so the direction is taken from the timer start to the point 1000 units along
+// the path (or as far as the attempt gets), then snapped to the nearest map axis when within 25 degrees:
+// maps are built on the grid, so every attempt on a map gets the same turn. Under 32 units in all, the
+// velocity at the timer start is used.
 // Returns { x, y, brk, turn }: x and y in units after the turn (NaN = no position), brk[i] = 1 when row
 // i isn't joined to row i - 1, turn = the angle added to world directions (radians, e.g. for the yaw).
 function buildPath(d, interval, preRows) {
@@ -266,16 +269,17 @@ function buildPath(d, interval, preRows) {
 		brk[i] = 0;
 		brk[i - 1] = 1;
 	}
-	let hx = d.vx[p];
-	let hy = d.vy[p];
-	for (let i = p + 1; i < n && !brk[i]; i++) {
-		if (Math.hypot(x[i], y[i]) >= 32) {
-			hx = x[i];
-			hy = y[i];
-			break;
-		}
+	let far = p;
+	let along = 0;
+	for (let i = p + 1; i < n && !brk[i] && along < 1000; i++) {
+		along += Math.hypot(x[i] - x[i - 1], y[i] - y[i - 1]);
+		far = i;
 	}
-	const turn = hx || hy ? Math.PI / 2 - Math.atan2(hy, hx) : 0;
+	const [hx, hy] = Math.hypot(x[far], y[far]) >= 32 ? [x[far], y[far]] : [d.vx[p], d.vy[p]];
+	let head = Math.atan2(hy, hx);
+	const axis = Math.round(head / (Math.PI / 2)) * (Math.PI / 2);
+	if (Math.abs(head - axis) <= (25 * Math.PI) / 180) head = axis;
+	const turn = hx || hy ? Math.PI / 2 - head : 0;
 	const c = Math.cos(turn);
 	const sn = Math.sin(turn);
 	for (let i = 0; i < n; i++) {

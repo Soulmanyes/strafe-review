@@ -3,7 +3,7 @@
 // Checks the top-down path (buildPath() in static/data.js) on every saved attempt: the timer start sits
 // at (0, 0), rows after it all get a position, and finished runs on one map and track end close together
 // (the finish zone), which shows the integration doesn't drift. The path is turned so the way out of the
-// start zone points up: the first row 32+ units from the timer start must sit straight above it.
+// start zone points up: 1000 units along, the path must be within 25 degrees of straight up.
 //
 //   node viewer/check_path.js [--store DIR] [--list]
 
@@ -39,12 +39,14 @@ for (const m of fs.readdirSync(store)) {
 			if (brk[i] && i !== p) breaks++;
 			if (i < p && !Number.isFinite(x[i])) before++;
 		}
-		let up = true;
-		for (let i = p + 1; i < d.n && !brk[i]; i++) {
-			if (Math.hypot(x[i], y[i]) < 32) continue;
-			up = Math.abs(x[i]) < 1e-6 && y[i] > 0;
-			break;
+		// the point 1000 units along (or the farthest before a break) must lie in the upper half, within 25 degrees of up
+		let far = p;
+		let along = 0;
+		for (let i = p + 1; i < d.n && !brk[i] && along < 1000; i++) {
+			along += Math.hypot(x[i] - x[i - 1], y[i] - y[i - 1]);
+			far = i;
 		}
+		const up = Math.hypot(x[far], y[far]) < 32 || Math.abs(Math.atan2(x[far], y[far])) <= (25 * Math.PI) / 180 + 1e-9;
 		const dist = pathDistance({ x, y, brk }, p, runEnd(a, d));
 		const ok = x[p] === 0 && y[p] === 0 && after === 0 && up;
 		if (!ok) bad++;
