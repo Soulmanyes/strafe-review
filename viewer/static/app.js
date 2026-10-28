@@ -772,6 +772,20 @@ function runStatRows() {
 				{ name: 'Swaps', desc: 'Times you switch from turning one way to the other inside a jump.', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swapsTimed), need: 'tick' },
 				{ name: 'Swap time', desc: 'How long a switch takes: ticks from turning at full speed one way to full speed the other way. Shorter = better (top replays about 4).', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
 				{ name: 'Swap efficiency', desc: 'Gain % (same meaning as above) over just the 7 ticks around a switch. Everyone loses some here; low = you lose a lot while changing direction (top replays about 85 %).', tip: "Median gain % of ideal over the 7 ticks centred on each reversal. Other players' recordings: centred their key lag earlier, because their view angles trail their movement", v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
+				{
+					name: 'Gain dip',
+					desc: 'How long your gain stays below this run\'s average gain % at a switch, split into dropping (before the lowest tick) and recovering (after it). Shorter = faster swap.',
+					tip: "Per swap: the lowest gain % tick within 4 ticks of the swap window's centre, then the ticks in a row under the run's gain % (Gain card) before it (down) and after it (up); dip = down + 1 + up, 0 when no tick is under it. Medians over the swaps, so down + up need not add up to the total",
+					v: (s) => `${n(s.dip, 1, ' t')} (${n(s.dipDown, 1)} down · ${n(s.dipUp, 1)} up)`,
+					need: 'tick'
+				},
+				{
+					name: 'Dip low point',
+					desc: 'Gain % on the worst tick of a switch. 0 % = no speed gained that tick; below 0 = losing speed (top replays about 15 %).',
+					tip: 'Median of each swap\'s lowest per-tick gain % (gain / ideal) near the reversal',
+					v: (s) => n(s.dipLow, 0, ' %'),
+					need: 'tick'
+				},
 				{ name: 'Lost at swaps', desc: 'Speed lost in those few ticks around switches, and how much of all your lost speed that is.', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
 				{ name: 'Peak after swap', desc: 'How fast you turn just after a switch compared with perfect. 100 % = perfect; under = slow to get going, over = jerking too hard.', tip: `Median of the fastest 2-tick turn in the 6 ticks after each reversal, vs optimal (100 % = optimal). +left/+right swaps not judged`, v: (s) => n(100 * s.peak, 0, ' %'), need: 'tick' },
 				{ name: 'Over / undershoot', desc: 'Switches where you turn too hard right after (over 115 %) / too gently (under 85 %).', tip: `Swaps whose peak is over ${BAND_HI * 100} % / under ${BAND_LO * 100} % of optimal, of the swaps judged`, v: (s) => `${s.over} / ${s.under} of ${s.judged}`, need: 'tick' },

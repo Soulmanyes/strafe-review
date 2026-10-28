@@ -37,7 +37,7 @@ for (const m of fs.readdirSync(store)) {
 			`${m} ${id} ${who.padEnd(20)} ${String(a.reason).padEnd(9)} gain ${f(s.gainPct)}% sync ${f(s.sync, 1)}% lag ${s.lag} angle ${f(s.angle)} ` +
 				`strafes/j ${f(s.strafesPerJump, 1)} turning ${f(s.turnPct, 1)}% landed ${s.landed}/${s.jumps} j1 ${s.j1 ? f(s.j1.pct) : '-'}% ` +
 				`vmax ${f(s.speedMax, 0)} vavg ${f(s.speedAvg, 0)} vend ${f(s.speedEnd, 0)} | ` +
-				`band ${f(s.inBand, 1)}% swaps ${s.swapsTimed} time ${f(s.swapTime, 1)} eff ${f(s.swapEff, 1)}% lost@swaps ${f(s.swapLostShare, 0)}% ` +
+				`band ${f(s.inBand, 1)}% swaps ${s.swapsTimed} time ${f(s.swapTime, 1)} eff ${f(s.swapEff, 1)}% lost@swaps ${f(s.swapLostShare, 0)}% dip ${f(s.dip, 1)} (${f(s.dipDown, 1)}/${f(s.dipUp, 1)}) low ${f(s.dipLow, 0)}% ` +
 				`peak ${f(s.peak)} over/under ${s.over}/${s.under} key ${f(s.keyOff, 1)}`
 		);
 	}

@@ -16,7 +16,9 @@ const BAND_LO = 0.85;
 const BAND_HI = 1.15;
 const SWAP_HALF = 3; // efficiency window: the reversal tick and 3 ticks each side
 const SWAP_PEAK = 6; // over/undershoot: ticks after the reversal searched for the peak turn speed
-const SWAP_SEARCH = 12; // the in-band tick before and after the reversal must be this close, else time is unknown
+const SWAP_SEARCH = 12;
+const DIP_PCT = 85; // gain dip threshold when the run has no gain % of its own (else the run's gain % is used)
+const DIP_FIND = 4; // the dip's lowest tick is searched this far each side of the window centre // the in-band tick before and after the reversal must be this close, else time is unknown
 
 // Raw turn speed of row i as a share of the optimal, signed so + is turning `dir` (NaN when unknown)
 function rawRatio(d, i, dir) {
@@ -43,10 +45,13 @@ function keyOffOf(d, sw, B) {
 //    about that much (gain by tick offset dips 6 ticks before the angle reversal on replays, at it on own runs).
 //  - peak: the highest 2-tick average of the new-side turn over the 6 ticks from the reversal, vs optimal.
 //    Over 1.15 = overshoot, under 0.85 = undershoot. Not judged when +left/+right is held (fixed turn rate).
+//  - dip / dipDown / dipUp / dipLow: the gain dip. Lowest per-tick gain % within 4 rows of the window
+//    centre (dipLow), ticks under dipPct (the run's gain %) in a row before it (down) and after it (up);
+//    dip = down + 1 + up.
 //  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Null for replays
 //    and, as in the check, when either strafe has missed ticks anywhere.
 // btn = +left/+right held on either side of the reversal (the owner's prestrafe into jump 1).
-function swapsOf(d, j, endIdx, replay, lag = 0) {
+function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
 	const sts = strafesOf(d, j, endIdx);
 	const sw = replay ? [] : switchesOf(d, j, endIdx);
 	const out = [];
@@ -60,7 +65,7 @@ function swapsOf(d, j, endIdx, replay, lag = 0) {
 		for (let i = lo + 1; i <= hi; i++) if (d.gap[i] > 0) gap = true;
 		if (gap) {
 			// still counted for the key switch, which the switch check judges here too
-			out.push({ jump: j.num, k, dir: B.dir, i: B.i0, gap: true, fall: NaN, ramp: NaN, time: NaN, eff: NaN, lost: 0, peak: NaN, keyOff: replay || A.gap || B.gap ? null : keyOffOf(d, sw, B), btn: false });
+			out.push({ jump: j.num, k, dir: B.dir, i: B.i0, gap: true, fall: NaN, ramp: NaN, time: NaN, eff: NaN, lost: 0, dip: NaN, dipDown: NaN, dipUp: NaN, dipLow: NaN, peak: NaN, keyOff: replay || A.gap || B.gap ? null : keyOffOf(d, sw, B), btn: false });
 			continue;
 		}
 		let rev = B.i0;
@@ -93,6 +98,23 @@ function swapsOf(d, j, endIdx, replay, lag = 0) {
 			g += d.gain[i];
 			id += d.ideal[i];
 		}
+		// Gain dip: the lowest gain % tick near the window centre, and the ticks under dipPct (the run's own
+		// gain %) in a row before it (down) and after it (up). No tick under it = no dip (0 / 0, low point kept).
+		const pctAt = (i) => (i >= 0 && i < d.n && d.gap[i] === 0 && strafing(d, i) && d.ideal[i] > 0 && Number.isFinite(d.gain[i]) ? (100 * d.gain[i]) / d.ideal[i] : NaN);
+		let low = -1;
+		for (let i = mid - DIP_FIND; i <= mid + DIP_FIND; i++) if (Number.isFinite(pctAt(i)) && (low < 0 || pctAt(i) < pctAt(low))) low = i;
+		let dipDown = NaN;
+		let dipUp = NaN;
+		const dipLow = low < 0 ? NaN : pctAt(low);
+		if (low >= 0) {
+			dipDown = 0;
+			dipUp = 0;
+			if (dipLow < dipPct) {
+				for (let i = low - 1; pctAt(i) < dipPct; i--) dipDown++;
+				for (let i = low + 1; pctAt(i) < dipPct; i++) dipUp++;
+			}
+		}
+		const dip = low < 0 ? NaN : dipLow < dipPct ? dipDown + 1 + dipUp : 0;
 		const btn = turnBtn(d, A.i1) || turnBtn(d, rev) || turnBtn(d, B.i0);
 		let peak = NaN;
 		if (!btn) {
@@ -102,7 +124,7 @@ function swapsOf(d, j, endIdx, replay, lag = 0) {
 			}
 		}
 		const keyOff = replay || A.gap || B.gap ? null : keyOffOf(d, sw, B);
-		out.push({ jump: j.num, k, dir: B.dir, i: rev, gap: false, fall, ramp, time: fall + ramp, eff: id > 0 ? (100 * g) / id : NaN, lost: Math.max(id - g, 0), peak, keyOff, btn });
+		out.push({ jump: j.num, k, dir: B.dir, i: rev, gap: false, fall, ramp, time: fall + ramp, eff: id > 0 ? (100 * g) / id : NaN, lost: Math.max(id - g, 0), dip, dipDown, dipUp, dipLow, peak, keyOff, btn });
 	}
 	return out;
 }
@@ -191,11 +213,14 @@ function summarize(head, d, jumps) {
 			}
 			if (!st.gap && st.i1 > st.i0) lens.push(st.n);
 		}
-		swaps.push(...swapsOf(d, j, endIdx, replay, replay ? lag : 0));
 		const isLanded = j.e <= endIdx && j.e < d.n;
 		if (isLanded) strafes += sts.length;
 		return { num: j.num, pct: j.pct, sync: syncOver(d, [[s, e]], lag).sync, strafes: sts.length, landed: isLanded, takeoff: j.takeoff, land: j.land };
 	});
+
+	// swaps after the loop: the gain dip is judged against the run's own gain %
+	const runPct = id > 0 ? (100 * g) / id : NaN;
+	for (const j of run) swaps.push(...swapsOf(d, j, endIdx, replay, replay ? lag : 0, Number.isFinite(runPct) ? runPct : DIP_PCT));
 
 	let vmax = 0;
 	let vsum = 0;
@@ -242,6 +267,10 @@ function summarize(head, d, jumps) {
 		swaps,
 		swapTime: median(fin(swaps.map((w) => w.time))),
 		swapEff: median(fin(swaps.map((w) => w.eff))),
+		dip: median(fin(swaps.map((w) => w.dip))),
+		dipDown: median(fin(swaps.map((w) => w.dipDown))),
+		dipUp: median(fin(swaps.map((w) => w.dipUp))),
+		dipLow: median(fin(swaps.map((w) => w.dipLow))),
 		swapLost,
 		swapLostShare: lost > 0 ? (100 * swapLost) / lost : NaN,
 		swapsTimed: timed.length,
@@ -252,7 +281,7 @@ function summarize(head, d, jumps) {
 		judged: pk.length,
 		keyOff: ko.length ? median(ko.map((w) => w.keyOff)) : NaN,
 		keyOnTarget: ko.length ? (100 * ko.filter((w) => w.keyOff >= -2 && w.keyOff <= 0).length) / ko.length : NaN,
-		gainPct: id > 0 ? (100 * g) / id : NaN,
+		gainPct: runPct,
 		sync: syncOver(d, ranges, lag).sync,
 		lag,
 		angle: ratios.length ? median(ratios) : NaN,
@@ -269,4 +298,4 @@ function summarize(head, d, jumps) {
 	};
 }
 
-if (typeof module !== 'undefined') module.exports = { LAG_MAX, BAND_LO, BAND_HI, keyLag, syncOver, swapsOf, summarize };
+if (typeof module !== 'undefined') module.exports = { LAG_MAX, BAND_LO, BAND_HI, DIP_PCT, keyLag, syncOver, swapsOf, summarize };
