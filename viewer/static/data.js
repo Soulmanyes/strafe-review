@@ -330,4 +330,52 @@ function pathDistance(path, i0, i1) {
 	return s;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance };
+// The same path turned to another angle (another recording's turn), so overlaid paths share one frame:
+// every path is built from world velocities with the timer start at (0, 0), but each snaps its own turn,
+// and a drill or an attempt off the map axis snaps to a different one
+function turnPath(path, turn) {
+	const by = turn - path.turn;
+	if (!by) return path;
+	const c = Math.cos(by);
+	const sn = Math.sin(by);
+	const x = new Float64Array(path.x.length);
+	const y = new Float64Array(path.y.length);
+	for (let i = 0; i < x.length; i++) {
+		x[i] = path.x[i] * c - path.y[i] * sn;
+		y[i] = path.x[i] * sn + path.y[i] * c;
+	}
+	return { ...path, x, y, turn };
+}
+
+// Gain % of ideal over 5 ticks around each air row, for the path colour (NaN on the ground). A coarse
+// recording (spectated live, see parse()) gets its jump's % on every air row instead.
+function pathPct(d, jumps) {
+	const pct = new Float64Array(d.n).fill(NaN);
+	if (d.coarse) {
+		for (const j of jumps) for (let i = j.s; i < j.e; i++) if (!d.ground[i]) pct[i] = j.pct;
+		return pct;
+	}
+	for (let i = 0; i < d.n; i++) {
+		if (d.ground[i]) continue;
+		let g = 0;
+		let id = 0;
+		for (let j = Math.max(0, i - 2); j <= Math.min(d.n - 1, i + 2); j++) {
+			if (d.ground[j] || !Number.isFinite(d.gain[j]) || !Number.isFinite(d.ideal[j])) continue;
+			g += d.gain[j];
+			id += d.ideal[j];
+		}
+		if (id > 0) pct[i] = (100 * g) / id;
+	}
+	return pct;
+}
+
+// A recording's path with its colour, cut at the run end: a paused replay's extra rows keep their last
+// velocity, so the path would run on past the end. d must be the recording's own rows, not an aligned
+// copy (alignGhost() rewrites gap, which buildPath() reads for step lengths, teleports and holes).
+function recordingPath(head, d, jumps, endIdx) {
+	const path = { ...buildPath(d, head.interval, head.preRows), pct: pathPct(d, jumps) };
+	for (let i = endIdx + 1; i <= d.n - 1 - (head.postRows || 0); i++) path.x[i] = path.y[i] = NaN;
+	return path;
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath };

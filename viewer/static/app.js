@@ -68,8 +68,8 @@ let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for a
 let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 let pathFit = null; // { s, ox, oy, r0, r1 }: how the last path drawing maps world units to pixels
 let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre); null = fit to pathRange()
-let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how }: the comparison drawn dashed pink
-const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps }
+let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how, path }: the comparison drawn dashed pink
+const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps, path }
 const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
 const ALIGN_KEY = 'strafe-review-align';
 const SETTINGS_KEY = 'strafe-review-checks';
@@ -391,9 +391,7 @@ async function open(dir, id) {
 	// runEnd(), not just before the post tail: a replay pauses at its end and keeps sending rows
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: runEnd(a, d) };
 	pathView = null;
-	cur.path = { ...buildPath(d, a.interval, a.preRows), pct: pathPct(d, jumps) };
-	// a paused replay's extra rows keep their last velocity, so the path would run on past the end: no position
-	for (let i = cur.endIdx + 1; i <= d.n - 1 - (a.postRows || 0); i++) cur.path.x[i] = cur.path.y[i] = NaN;
+	cur.path = recordingPath(a, d, jumps, cur.endIdx);
 	location.hash = `${dir}/${id}`;
 	showCm360();
 	hoverIdx = -1;
@@ -495,7 +493,9 @@ async function setGhost() {
 		const a = await res.json();
 		a.dir = h.dir;
 		const d = parse(a);
-		g = { head: a, d, jumps: findJumps(d, a.preRows).jumps };
+		const jumps = findJumps(d, a.preRows).jumps;
+		// from the recording's own rows: the aligned copy's gaps would bend the path
+		g = { head: a, d, jumps, path: recordingPath(a, d, jumps, runEnd(a, d)) };
 		ghostCache.set(key, g);
 	}
 	const al = alignGhost(cur, g, $('align').value);
@@ -504,7 +504,9 @@ async function setGhost() {
 	for (let i = 0; i < gd.n; i++) if (Number.isFinite(gd.x[i])) order.push(i);
 	const v = $('cmp-sel').value;
 	const how = v.startsWith('p:') ? presets(candidates()).find((p) => p.id === v).name : 'picked';
-	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how };
+	// the path in the open attempt's turn, so both share one frame
+	const path = turnPath(g.path, cur.path.turn);
+	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how, path };
 }
 
 // A ghost that fails to load must not stop the open attempt from showing
@@ -1232,28 +1234,6 @@ function drawHover() {
 
 // ---------- top-down path ----------
 
-// Gain % of ideal over 5 ticks around each air row, for the path colour (NaN on the ground). A coarse
-// recording (spectated live, see parse()) gets its jump's % on every air row instead.
-function pathPct(d, jumps) {
-	const pct = new Float64Array(d.n).fill(NaN);
-	if (d.coarse) {
-		for (const j of jumps) for (let i = j.s; i < j.e; i++) if (!d.ground[i]) pct[i] = j.pct;
-		return pct;
-	}
-	for (let i = 0; i < d.n; i++) {
-		if (d.ground[i]) continue;
-		let g = 0;
-		let id = 0;
-		for (let j = Math.max(0, i - 2); j <= Math.min(d.n - 1, i + 2); j++) {
-			if (d.ground[j] || !Number.isFinite(d.gain[j]) || !Number.isFinite(d.ideal[j])) continue;
-			g += d.gain[j];
-			id += d.ideal[j];
-		}
-		if (id > 0) pct[i] = (100 * g) / id;
-	}
-	return pct;
-}
-
 // Same scale as the drill page and the in-game line: red at 60 % and under, green at 95 % and over
 function gainColor(p) {
 	if (!Number.isFinite(p)) return '#8c8c96';
@@ -1290,13 +1270,16 @@ function drawPath() {
 	let x1 = -Infinity;
 	let y0 = Infinity;
 	let y1 = -Infinity;
-	for (let i = r0; i <= r1; i++) {
-		if (!Number.isFinite(x[i])) continue;
-		x0 = Math.min(x0, x[i]);
-		x1 = Math.max(x1, x[i]);
-		y0 = Math.min(y0, y[i]);
-		y1 = Math.max(y1, y[i]);
-	}
+	const grow = (px, py, i) => {
+		if (!Number.isFinite(px[i])) return;
+		x0 = Math.min(x0, px[i]);
+		x1 = Math.max(x1, px[i]);
+		y0 = Math.min(y0, py[i]);
+		y1 = Math.max(y1, py[i]);
+	};
+	for (let i = r0; i <= r1; i++) grow(x, y, i);
+	const gIn = ghostInRange(r0, r1);
+	if (ghost) for (let i = 0; i < ghost.d.n; i++) if (gIn(i)) grow(ghost.path.x, ghost.path.y, i);
 	if (!Number.isFinite(x0)) {
 		g.fillText('No path for these ticks.', 12, 22);
 		return;
@@ -1315,9 +1298,11 @@ function drawPath() {
 	$('path-reset').disabled = !pathView;
 	pathFit = { s, ox, oy, r0, r1 };
 	const runDist = pathDistance(cur.path, Math.min(cur.head.preRows || 0, d.n - 1), runEnd(cur.head, d));
-	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
+	const ghostDist = ghost ? ` · ghost ${Math.round(pathDistance(ghost.path, Math.min(ghost.head.preRows || 0, ghost.d.n - 1), runEnd(ghost.head, ghost.d)))} units` : '';
+	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units${ghostDist} · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
 	const X = (i) => ox + x[i] * s;
 	const Y = (i) => oy - y[i] * s;
+	if (ghost) drawGhostPath(g, gIn);
 	// one stroke per run of rows with the same colour; rows outside the graph's ticks are dimmed
 	g.lineCap = 'round';
 	g.lineJoin = 'round';
@@ -1383,6 +1368,58 @@ function drawPath() {
 	g.fillText(`${unit} units`, 12, H - 18);
 }
 
+// Ghost rows that sit in the graph's ticks (by their aligned tick), or all of them with "Whole path".
+// Rows the per-jump alignment squeezed out have no tick: they are drawn dimmed.
+function ghostInRange(r0, r1) {
+	if (!ghost) return () => false;
+	if ($('path-whole').checked) return () => true;
+	const lo = cur.d.x[r0] - 0.5;
+	const hi = cur.d.x[r1] + 0.5;
+	return (i) => ghost.gd.x[i] >= lo && ghost.gd.x[i] <= hi;
+}
+
+// The ghost on the path: dashed pink under the open attempt (a red-green ghost over the red-green path
+// couldn't be read), with a ring where its run ends
+function drawGhostPath(g, gIn) {
+	const { x, y, brk } = ghost.path;
+	const { s, ox, oy } = pathFit;
+	const X = (i) => ox + x[i] * s;
+	const Y = (i) => oy - y[i] * s;
+	g.strokeStyle = COL.ghost;
+	g.lineCap = 'butt';
+	g.setLineDash([6, 4]);
+	// joined runs of rows (moveTo only at a break), so the dash pattern runs on along the line
+	for (const dim of [true, false]) {
+		g.globalAlpha = dim ? 0.22 : 0.9;
+		g.lineWidth = dim ? 1.5 : 2;
+		g.beginPath();
+		let open = false;
+		for (let i = 1; i < ghost.d.n; i++) {
+			if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1]) || !gIn(i) === !dim) {
+				open = false;
+				continue;
+			}
+			if (!open) g.moveTo(X(i - 1), Y(i - 1));
+			g.lineTo(X(i), Y(i));
+			open = true;
+		}
+		g.stroke();
+	}
+	g.setLineDash([]);
+	g.globalAlpha = 1;
+	const e = runEnd(ghost.head, ghost.d);
+	if (gIn(e) && Number.isFinite(x[e])) {
+		g.lineWidth = 2;
+		g.beginPath();
+		g.arc(X(e), Y(e), 6, 0, 2 * Math.PI);
+		g.stroke();
+		g.fillStyle = COL.ghost;
+		g.font = '600 11px system-ui, sans-serif';
+		// above the ring: the open attempt's end label sits below its own ring, often right next to it
+		g.fillText(ghost.head.reason === 'finish' ? 'ghost finish' : 'ghost end', X(e) + 9, Y(e) - 8);
+	}
+}
+
 // Hover dot with the view direction, and the picked mistake's rows
 function drawPathHover() {
 	const cv = $('path-over');
@@ -1410,6 +1447,23 @@ function drawPathHover() {
 	}
 	const i = hoverIdx;
 	if (i < 0 || !Number.isFinite(x[i])) return;
+	// the ghost's row that the graph pairs with this one
+	const gi = ghost ? ghostNearest(ghost.gd.x, ghost.order, cur.d.x[i], 0.5) : -1;
+	if (gi >= 0 && Number.isFinite(ghost.path.x[gi])) {
+		const gx = ox + ghost.path.x[gi] * s;
+		const gy = oy - ghost.path.y[gi] * s;
+		const ga = (ghost.d.yaw[gi] * Math.PI) / 180 + ghost.path.turn;
+		g.strokeStyle = COL.ghost;
+		g.lineWidth = 2;
+		g.beginPath();
+		g.moveTo(gx, gy);
+		g.lineTo(gx + Math.cos(ga) * 18, gy - Math.sin(ga) * 18);
+		g.stroke();
+		g.fillStyle = COL.ghost;
+		g.beginPath();
+		g.arc(gx, gy, 4, 0, 2 * Math.PI);
+		g.fill();
+	}
 	const a = (cur.d.yaw[i] * Math.PI) / 180 + cur.path.turn;
 	g.strokeStyle = COL.hover;
 	g.lineWidth = 2;

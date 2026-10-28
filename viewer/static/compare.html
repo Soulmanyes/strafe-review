@@ -39,6 +39,24 @@
 		<div id="readout" class="readout"></div>
 		<div id="plot"><canvas id="base"></canvas><canvas id="over"></canvas></div>
 	</section>
+	<section id="path-sec">
+		<div class="sec-head">
+			<h2>Path from above</h2>
+			<span id="path-dist" class="path-dist" title="Horizontal distance from the timer start to the run end (teleports add nothing)"></span>
+			<span class="muted">Built up from speed, so the shape is right but not exact. Every path starts at the timer start and is turned like the reference's, so the way out of the start zone points up. Fits the ticks shown in the graph (the rest is dimmed) until you zoom or drag it.</span>
+			<label class="cmp" title="Fit the whole paths instead of the ticks shown in the graph"><input type="checkbox" id="path-whole"> Whole path</label>
+			<span class="hint">Colours as in the graph; the reference is on top · hover: graph cursor · click: zoom to that jump · drag: pan</span>
+		</div>
+		<div id="path-box">
+			<canvas id="path-base"></canvas>
+			<canvas id="path-over"></canvas>
+			<div class="path-zoom">
+				<button id="path-in" title="Zoom in">+</button>
+				<button id="path-out" title="Zoom out">−</button>
+				<button id="path-reset" title="Back to the fit (follows the graph again)" disabled>Reset</button>
+			</div>
+		</div>
+	</section>
 	<section id="perjump">
 		<div class="sec-head"><h2>Per jump</h2><span id="pj-note" class="muted"></span></div>
 		<div id="pj-body"></div>

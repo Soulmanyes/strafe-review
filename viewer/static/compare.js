@@ -199,7 +199,10 @@ async function rec(h) {
 	const replay = isOther(a);
 	// Weak takeoff compares with the owner's own median, which says nothing about someone else's replay
 	const mistakes = runChecks(d, jumps, stats.endIdx, loadSettings(), replay ? null : takeoffBaseline(a), replay);
-	const r = { head: a, d, jumps, stats, mistakes };
+	// the path from the recording's own rows (the aligned copy's gaps would bend it), nothing after the run end
+	const path = recordingPath(a, d, jumps, stats.endIdx);
+	for (let i = stats.endIdx + 1; i < d.n; i++) path.x[i] = path.y[i] = NaN;
+	const r = { head: a, d, jumps, stats, mistakes, path };
 	recs.set(h.id, r);
 	return r;
 }
@@ -232,8 +235,11 @@ async function build() {
 		// rows after the run end are left out (a replay keeps sending rows while paused at its end)
 		const order = [];
 		for (let i = 0; i <= r.stats.endIdx; i++) if (Number.isFinite(gd.x[i])) order.push(i);
-		return { ...r, color: COLORS[k], gd, order, used, matched };
+		// every path in the reference's turn, so they share one frame
+		const path = turnPath(r.path, got[0].path.turn);
+		return { ...r, color: COLORS[k], gd, order, used, matched, path };
 	});
+	pathView = null;
 	showStats();
 	showPerJump();
 	showMistakes();
@@ -677,6 +683,7 @@ function draw() {
 	$('plot').style.height = `${H}px`;
 	const g = size(base, W, H);
 	size(over, W, H);
+	drawPath();
 	if (!shown.length) return;
 	const ref = shown[0];
 	const step = niceStep(view.x1 - view.x0, plotW(), 80);
@@ -743,6 +750,7 @@ function drawHover() {
 	g.setTransform(1, 0, 0, 1, 0, 0);
 	g.clearRect(0, 0, over.width, over.height);
 	g.setTransform(r0, 0, 0, r0, 0, 0);
+	drawPathHover();
 	const box = $('readout');
 	if (hoverX === null || !shown.length) {
 		box.innerHTML = '<span class="k">Hover the graph for values.</span>';
@@ -775,6 +783,272 @@ function drawHover() {
 		box.append(row);
 	}
 }
+
+// ---------- top-down path ----------
+
+let pathFit = null; // { s, ox, oy }: how the last path drawing maps world units to pixels
+let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre); null = fit to the graph's ticks
+const PATH_WHOLE_KEY = 'strafe-review-path-whole'; // shared with the main page
+
+// Rows of a recording the path fits and draws bright: those in the graph's ticks (by aligned tick), or
+// all with "Whole path". Rows the per-jump alignment squeezed out have no tick: they are drawn dimmed.
+function pathIn(r) {
+	if ($('path-whole').checked) return () => true;
+	return (i) => r.gd.x[i] >= view.x0 && r.gd.x[i] <= view.x1;
+}
+
+function drawPath() {
+	const box = $('path-box');
+	const W = box.clientWidth;
+	const H = box.clientHeight;
+	const g = size($('path-base'), W, H);
+	size($('path-over'), W, H);
+	pathFit = null;
+	$('path-dist').replaceChildren();
+	g.font = '12px system-ui, sans-serif';
+	g.fillStyle = C.muted;
+	if (!shown.length) {
+		g.fillText('Pick recordings above.', 12, 22);
+		return;
+	}
+	let x0 = Infinity;
+	let x1 = -Infinity;
+	let y0 = Infinity;
+	let y1 = -Infinity;
+	const ins = shown.map(pathIn);
+	for (const [k, r] of shown.entries()) {
+		const { x, y } = r.path;
+		for (let i = 0; i < r.d.n; i++) {
+			if (!Number.isFinite(x[i]) || !ins[k](i)) continue;
+			x0 = Math.min(x0, x[i]);
+			x1 = Math.max(x1, x[i]);
+			y0 = Math.min(y0, y[i]);
+			y1 = Math.max(y1, y[i]);
+		}
+	}
+	if (!Number.isFinite(x0)) {
+		g.fillText('No path for these ticks.', 12, 22);
+		return;
+	}
+	const PAD = 24;
+	// world y points up, so it is flipped on the canvas; at least 64 units across, so a standstill doesn't blow up
+	const v = pathView || {
+		s: Math.min((W - 2 * PAD) / Math.max(x1 - x0, 64), (H - 2 * PAD) / Math.max(y1 - y0, 64)),
+		cx: (x0 + x1) / 2,
+		cy: (y0 + y1) / 2
+	};
+	const s = v.s;
+	const ox = W / 2 - v.cx * s;
+	const oy = H / 2 + v.cy * s;
+	$('path-reset').disabled = !pathView;
+	pathFit = { s, ox, oy };
+	for (const r of shown) {
+		const p = Math.min(r.head.preRows || 0, r.d.n - 1);
+		const span = document.createElement('span');
+		span.innerHTML = `<span style="color:${r.color}">■</span> ${Math.round(pathDistance(r.path, p, r.stats.endIdx))} `;
+		$('path-dist').append(span);
+	}
+	$('path-dist').append('units');
+	g.lineCap = 'round';
+	g.lineJoin = 'round';
+	// the reference last, so it is on top; dimmed rows first, under the bright ones
+	for (const dim of [true, false]) {
+		for (let k = shown.length - 1; k >= 0; k--) {
+			const r = shown[k];
+			const { x, y, brk } = r.path;
+			g.strokeStyle = r.color;
+			g.globalAlpha = dim ? 0.22 : 1;
+			g.lineWidth = dim ? 1.5 : k === 0 ? 3 : 2.2;
+			g.beginPath();
+			for (let i = 1; i < r.d.n; i++) {
+				if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1]) || !ins[k](i) !== dim) continue;
+				g.moveTo(ox + x[i - 1] * s, oy - y[i - 1] * s);
+				g.lineTo(ox + x[i] * s, oy - y[i] * s);
+			}
+			g.stroke();
+		}
+	}
+	g.globalAlpha = 1;
+	// the reference's takeoffs with their jump numbers when there's room
+	const ref = shown[0];
+	const { x, y } = ref.path;
+	const tk = ref.jumps.filter((j) => j.num && j.s <= ref.stats.endIdx && ins[0](j.s) && Number.isFinite(x[j.s]));
+	g.font = '600 11px system-ui, sans-serif';
+	g.fillStyle = C.text;
+	for (const j of tk) {
+		const X = ox + x[j.s] * s;
+		const Y = oy - y[j.s] * s;
+		g.beginPath();
+		g.arc(X, Y, 3, 0, 2 * Math.PI);
+		g.fill();
+		if (tk.length <= 40) g.fillText(String(j.num), X + 5, Y - 5);
+	}
+	// timer start (every path's (0, 0)) and each run end in its colour
+	const ring = (X, Y, col, text) => {
+		g.strokeStyle = col;
+		g.lineWidth = 2;
+		g.beginPath();
+		g.arc(X, Y, 6, 0, 2 * Math.PI);
+		g.stroke();
+		g.fillStyle = col;
+		g.fillText(text, X + 9, Y + 14);
+	};
+	ring(ox, oy, C.opt, 'timer start');
+	for (const [k, r] of shown.entries()) {
+		const e = r.stats.endIdx;
+		if (!ins[k](e) || !Number.isFinite(r.path.x[e])) continue;
+		ring(ox + r.path.x[e] * s, oy - r.path.y[e] * s, r.color, r.head.reason === 'finish' ? 'finish' : 'end');
+	}
+	// scale bar
+	const unit = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find((u) => u * s >= 60) || 10000;
+	g.strokeStyle = C.text;
+	g.lineWidth = 2;
+	g.beginPath();
+	g.moveTo(12, H - 12);
+	g.lineTo(12 + unit * s, H - 12);
+	g.stroke();
+	g.fillStyle = C.muted;
+	g.font = '11px system-ui, sans-serif';
+	g.fillText(`${unit} units`, 12, H - 18);
+}
+
+// A dot with the view direction on each path, at the row the graph cursor pairs it with
+function drawPathHover() {
+	const cv = $('path-over');
+	const g = cv.getContext('2d');
+	const r0 = window.devicePixelRatio || 1;
+	g.setTransform(1, 0, 0, 1, 0, 0);
+	g.clearRect(0, 0, cv.width, cv.height);
+	g.setTransform(r0, 0, 0, r0, 0, 0);
+	if (hoverX === null || !pathFit) return;
+	const { s, ox, oy } = pathFit;
+	for (let k = shown.length - 1; k >= 0; k--) {
+		const r = shown[k];
+		const i = ghostNearest(r.gd.x, r.order, hoverX, 0.5);
+		if (i < 0 || !Number.isFinite(r.path.x[i])) continue;
+		const X = ox + r.path.x[i] * s;
+		const Y = oy - r.path.y[i] * s;
+		const a = (r.d.yaw[i] * Math.PI) / 180 + r.path.turn;
+		g.strokeStyle = r.color;
+		g.lineWidth = 2;
+		g.beginPath();
+		g.moveTo(X, Y);
+		g.lineTo(X + Math.cos(a) * 20, Y - Math.sin(a) * 20);
+		g.stroke();
+		g.fillStyle = r.color;
+		g.beginPath();
+		g.arc(X, Y, k === 0 ? 5 : 4, 0, 2 * Math.PI);
+		g.fill();
+		g.strokeStyle = C.hover;
+		g.lineWidth = 1;
+		g.stroke();
+	}
+}
+
+// Nearest row to a point on the path canvas, within 14 px, over all recordings: { r, i } or null. Only
+// rows with a graph tick count (squeezed-out rows have nothing to put the cursor on); among those, the
+// ones the path fits, or any once zoomed/panned.
+function pathRowAt(mx, my) {
+	if (!pathFit) return null;
+	const { s, ox, oy } = pathFit;
+	let best = null;
+	let bd = 14 * 14;
+	for (const r of shown) {
+		const inside = pathView ? () => true : pathIn(r);
+		for (const i of r.order) {
+			if (!Number.isFinite(r.path.x[i]) || !inside(i)) continue;
+			const dx = ox + r.path.x[i] * s - mx;
+			const dy = oy - r.path.y[i] * s - my;
+			if (dx * dx + dy * dy < bd) {
+				bd = dx * dx + dy * dy;
+				best = { r, i };
+			}
+		}
+	}
+	return best;
+}
+
+// The current fit as a pathView, to zoom or pan from
+function pathViewNow() {
+	const box = $('path-box');
+	const { s, ox, oy } = pathFit;
+	return { s, cx: (box.clientWidth / 2 - ox) / s, cy: (oy - box.clientHeight / 2) / s };
+}
+
+function pathZoom(f) {
+	if (!pathFit) return;
+	const v = pathViewNow();
+	pathView = { ...v, s: v.s * f };
+	draw();
+}
+$('path-in').onclick = () => pathZoom(1.5);
+$('path-out').onclick = () => pathZoom(1 / 1.5);
+$('path-reset').onclick = () => {
+	pathView = null;
+	draw();
+};
+
+// Drag pans the path; a drag of more than 4 px is not a click
+let pathDrag = null; // { mx, my, v, moved }
+$('path-over').addEventListener('mousedown', (e) => {
+	if (e.button !== 0 || !pathFit) return;
+	e.preventDefault();
+	pathDrag = { mx: e.clientX, my: e.clientY, v: pathViewNow(), moved: false };
+});
+window.addEventListener('mousemove', (e) => {
+	if (!pathDrag) return;
+	const dx = e.clientX - pathDrag.mx;
+	const dy = e.clientY - pathDrag.my;
+	if (!pathDrag.moved && dx * dx + dy * dy <= 16) return;
+	pathDrag.moved = true;
+	$('path-over').classList.add('drag');
+	const { s, cx, cy } = pathDrag.v;
+	pathView = { s, cx: cx - dx / s, cy: cy + dy / s };
+	draw();
+});
+window.addEventListener('mouseup', () => {
+	if (!pathDrag) return;
+	$('path-over').classList.remove('drag');
+	// the click event comes right after this mouseup; leave the flag for it to see
+	if (pathDrag.moved) setTimeout(() => (pathDrag = null));
+	else pathDrag = null;
+});
+$('path-over').addEventListener('mousemove', (e) => {
+	if (pathDrag) return;
+	const rect = e.currentTarget.getBoundingClientRect();
+	const hit = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
+	hoverX = hit ? hit.r.gd.x[hit.i] : null;
+	drawHover();
+});
+$('path-over').addEventListener('mouseleave', () => {
+	hoverX = null;
+	drawHover();
+});
+// Click: zoom the graph to that jump (in every recording), or centre it on that tick on the ground
+$('path-over').addEventListener('click', (e) => {
+	if (pathDrag?.moved) return;
+	const rect = e.currentTarget.getBoundingClientRect();
+	const hit = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
+	if (!hit) return;
+	const { r, i } = hit;
+	const j = r.jumps.find((jj) => i >= jj.s && i < jj.e);
+	const x = r.gd.x[i];
+	if (j && j.num) zoomToJump(j.num);
+	else {
+		const span = view.x1 - view.x0;
+		view = { x0: x - span / 2, x1: x + span / 2 };
+		draw();
+	}
+	hoverX = x;
+	drawHover();
+});
+$('path-whole').checked = localStorage.getItem(PATH_WHOLE_KEY) === '1';
+$('path-whole').onchange = () => {
+	localStorage.setItem(PATH_WHOLE_KEY, $('path-whole').checked ? '1' : '0');
+	pathView = null;
+	draw();
+};
+new ResizeObserver(() => draw()).observe($('path-box'));
 
 // ---------- input ----------
 
