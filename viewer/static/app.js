@@ -1379,17 +1379,17 @@ function ghostInRange(r0, r1) {
 	return (i) => ghost.gd.x[i] >= lo && ghost.gd.x[i] <= hi;
 }
 
-// The ghost's line on the path: dashed, under the open attempt, coloured by its 5-tick gain % in pink from
-// dark (60 %) to bright (95 %) (a red-green ghost over the red-green path couldn't be read)
+// The ghost's line on the path: solid (dashes hid the gain colour), under the open attempt, coloured by its
+// 5-tick gain % in pink from dark (60 %) to bright (95 %) (a red-green ghost over the red-green path
+// couldn't be read)
 function drawGhostPath(g, gIn) {
 	const { x, y, brk, pct } = ghost.path;
 	const { s, ox, oy } = pathFit;
 	const X = (i) => ox + x[i] * s;
 	const Y = (i) => oy - y[i] * s;
-	g.lineCap = 'butt';
+	g.lineCap = 'round';
 	g.lineJoin = 'round';
-	g.setLineDash([6, 4]);
-	// one stroke per run of rows with the same colour (moveTo only at a break), so the dashes run on
+	// one stroke per run of rows with the same colour
 	let run = null;
 	const flush = () => {
 		if (!run) return;
@@ -1415,7 +1415,6 @@ function drawGhostPath(g, gIn) {
 		g.lineTo(X(i), Y(i));
 	}
 	flush();
-	g.setLineDash([]);
 	g.globalAlpha = 1;
 }
 
