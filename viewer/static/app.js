@@ -1061,6 +1061,7 @@ function drawHover() {
 	}
 	if (!cur || hoverIdx < 0) {
 		$('readout').innerHTML = '<span class="k">Hover the graph for values.</span>';
+		holdHeight($('readout'));
 		return;
 	}
 	const d = cur.d;
@@ -1099,6 +1100,7 @@ function drawHover() {
 	];
 	if (d.gap[i] > 0) fields.push(['missed before', String(d.gap[i])]);
 	$('readout').innerHTML = fields.map(([k, v]) => `<span><span class="k">${k}</span> ${v}</span>`).join('');
+	holdHeight($('readout'));
 }
 
 // ---------- top-down path ----------

@@ -1,4 +1,6 @@
 :root {
+	color-scheme: dark; /* dark form controls */
+	scrollbar-color: #4a5468 #1c1f26; /* thumb = --border, track = --panel */
 	--bg: #15171c;
 	--panel: #1c1f26;
 	--card: #2a2f3b;
@@ -118,7 +120,8 @@ h1 { font-size: 17px; margin: 0; }
 	border-radius: 8px;
 }
 .att.sel { border: 2px solid var(--accent); background: var(--card-hi); padding: 7px 9px; }
-.att .row1 { display: flex; justify-content: space-between; gap: 6px; }
+.att .row1 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 6px; }
+.att .row1 .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; } /* long replay labels must not push the end chip out of the card */
 .att .row2 { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .att .row3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 5px; }
 .note-snip { color: var(--text); font-size: 12px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -194,7 +197,8 @@ label.cmp { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .hint { color: var(--muted); font-size: 12px; margin-left: 8px; }
 
 #readout {
-	min-height: 30px;
+	flex: none; /* #main is a scrolling column: without this the box shrinks and the wrapped values spill out */
+	min-height: calc(3em + 12px); /* two lines; holdHeight() keeps it at the tallest seen */
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px 16px;

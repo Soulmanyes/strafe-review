@@ -7,7 +7,7 @@
 #pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }
 .pick {
 	display: grid;
-	grid-template-columns: 12px 190px 170px 230px 150px 130px;
+	grid-template-columns: 12px minmax(0, 190px) minmax(0, 170px) minmax(0, 230px) minmax(0, 150px) 130px; /* text columns shrink in narrow windows, alike in every row */
 	align-items: center;
 	gap: 12px;
 	min-height: 32px;
@@ -19,6 +19,7 @@
 	font-size: 13px;
 	white-space: nowrap;
 }
+.pick > *, .pick .chip { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pick:hover { border-color: var(--accent); }
 .pick.on { background: var(--card-hi); }
 .pick.off { opacity: 0.5; cursor: default; }

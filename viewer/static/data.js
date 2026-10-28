@@ -494,4 +494,17 @@ function gainShade(p, hex) {
 	return `rgb(${mix(ch(1))},${mix(ch(3))},${mix(ch(5))})`;
 }
 
+// Keeps a hover readout at the tallest it has been for this width and key (for example how many recordings
+// are shown), so the graph under it doesn't jump as the values change length.
+const heldHeights = new WeakMap();
+function holdHeight(box, key = '') {
+	const id = `${box.clientWidth}|${key}`;
+	let held = heldHeights.get(box);
+	if (!held || held.id !== id) held = { id, h: 0 };
+	box.style.minHeight = '';
+	held.h = Math.max(held.h, box.offsetHeight);
+	heldHeights.set(box, held);
+	box.style.minHeight = `${held.h}px`;
+}
+
 if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };

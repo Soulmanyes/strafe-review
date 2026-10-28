@@ -786,6 +786,7 @@ function drawHover() {
 	const box = $('readout');
 	if (hoverX === null || !shown.length) {
 		box.innerHTML = '<span class="k">Hover the graph for values.</span>';
+		holdHeight(box, shown.length);
 		return;
 	}
 	const last = lanes[lanes.length - 1];
@@ -814,6 +815,7 @@ function drawHover() {
 		}
 		box.append(row);
 	}
+	holdHeight(box, shown.length);
 }
 
 // ---------- top-down path ----------

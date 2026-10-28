@@ -496,7 +496,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
 
 Do these before the owner's SSJ wishVel test (to-do `strafe-review-ssj-test`).
 
-1. **Graph readout overflows its box.** The numbers shown for the mouse position on the graph (`#readout`) run past the box. Make them wrap or fit; check /compare's readout too.
+1. **Done (2026-10-28): graph readout overflow.** `#main` is a scrolling flex column, so `#readout` (min-height 30 px) shrank and its wrapped values spilled out. Now `flex: none`, and `holdHeight()` (data.js) keeps both pages' readouts at the tallest height seen for the width (and, on /compare, the number of recordings), so the graph doesn't jump while hovering. Same pass: /compare's picker columns shrink with ellipsis in narrow windows ("Make reference" was cut off), and dark scrollbars (`color-scheme`, `scrollbar-color` in style.css).
 2. **Done (2026-10-28): comparison removed from the main run page.** Picker, align select and hint, ghost chips, lane ghost, jump-strip ghost, pink path, hover ghost values and the pink Run stats column are gone. The "Compare page" button opens /compare with the open attempt as the reference. `alignGhost()`, `ghostNearest()`, `turnPath()` and `gainShade()` stay in data.js for /compare.
 3. **Done (2026-10-28): /compare has everything the main page compared.**
    - Run stats rows live in `static/runrows.js`, loaded by both pages: same rows, descriptions and hover tips. /compare shows one column per recording and stars the best per row. Direction per row: `best` is 'max', 'min' or a target (angle and peak 1, switch vs reversal -1). Not ranked: jumps landed, missed ticks, best/worst jump, turn speed, strafes per jump, strafe length, +left/+right ticks, swaps, key lag, worst swap. Run-length sums (distance, speed lost, speed at the end, end time) rank finished runs only. Rows a recording can't have (keys on replays, tick rows on spectated runs) show '–' with the reason.
@@ -504,7 +504,7 @@ Do these before the owner's SSJ wishVel test (to-do `strafe-review-ssj-test`).
    - Quick picks above the recording list: your fastest finish, your best jump 1, top replay. Click adds, click again takes out.
    - The legend says when a recording's gain and angle were rebuilt from speed.
    - Not ported: the ghost's thin A/D key strips. /compare has no keys lane.
-4. **End chip pushed out of the attempt card (owner, 2026-10-28).** In the main page's attempt list, a long label such as `Replay: Soulmanyes. #BOTDG` pushes the end chip next to it ("Replay stopped") past the card's right edge, where it gets cut off. Let the row wrap, or shorten the label with an ellipsis, so the end chip always stays inside the card.
+4. **Done (2026-10-28): end chip pushed out of the attempt card.** A long label such as `Replay: Soulmanyes. #BOTDG` pushed the end chip past the card's edge. The card's first row now wraps (the end chip drops under the label), and a chip longer than the card ends in an ellipsis.
 
 ## Later / undecided
 
