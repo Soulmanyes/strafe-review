@@ -138,12 +138,17 @@ function runStatRows(ctx) {
 					name: 'Sync (keys vs turn)', desc: 'Share of turning ticks where the right strafe key (A or D alone) is held. Higher = better.',
 					tip: "Strafing ticks where A or D alone matches the turn side, keys shifted by the best lag. +left/+right ticks out. Not the game's sync number",
 					v: (s, r) => `${n(s.sync, 1, ' %')}${isOther(r.head) ? ' approx.' : ''}`,
-					sub: (s) => `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t`,
+					sub: (s, r) => `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${isOther(r.head) ? ' (replay playback)' : ''}`,
 					num: (s) => s.sync,
 					best: 'max',
 					need: 'tick'
 				},
-				{ name: 'Key lag', desc: 'How many ticks your keys come before your mouse turn. Your runs: about 1.', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
+				{
+					name: 'Key lag', desc: "How many ticks your keys come before your mouse turn. Your runs: about 1. On a replay it is the replay's playback delay (about 5 for anyone), not the player.",
+					tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7: replays store keys ahead of the view angles',
+					v: (s, r) => (Number.isFinite(s.sync) ? `${s.lag} t${isOther(r.head) ? ' · replay playback, not the player' : ''}` : '–'),
+					need: 'tick'
+				},
 				{ name: 'Switch vs reversal', desc: 'When you press the new key compared with when your mouse changes direction. Target -1 (one tick before).', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), num: (s) => s.keyOff, best: -1, need: 'keys' },
 				{ name: 'Switch on target', desc: 'Key switches 0-2 ticks before the mouse changes direction.', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), num: (s) => s.keyOnTarget, best: 'max', need: 'keys' },
 				{
