@@ -39,12 +39,14 @@ function keyOffOf(d, sw, B) {
 // per-tick yaw turns the new way (the 5-tick average lags and smears it). Per swap:
 //  - time: ticks from the last old-side tick at 85 %+ of optimal to the first new-side one (fall + ramp).
 //  - eff / lost: gain over ideal on the 7 rows centred on the reversal, and ideal - gain there in u/s.
+//    Other players' recordings: centred `lag` rows earlier (keyLag()). Their angles trail the velocity by
+//    about that much (gain by tick offset dips 6 ticks before the angle reversal on replays, at it on own runs).
 //  - peak: the highest 2-tick average of the new-side turn over the 6 ticks from the reversal, vs optimal.
 //    Over 1.15 = overshoot, under 0.85 = undershoot. Not judged when +left/+right is held (fixed turn rate).
 //  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Null for replays
 //    and, as in the check, when either strafe has missed ticks anywhere.
 // btn = +left/+right held on either side of the reversal (the owner's prestrafe into jump 1).
-function swapsOf(d, j, endIdx, replay) {
+function swapsOf(d, j, endIdx, replay, lag = 0) {
 	const sts = strafesOf(d, j, endIdx);
 	const sw = replay ? [] : switchesOf(d, j, endIdx);
 	const out = [];
@@ -84,7 +86,9 @@ function swapsOf(d, j, endIdx, replay) {
 		}
 		let g = 0;
 		let id = 0;
-		for (let i = Math.max(rev - SWAP_HALF, 0); i <= Math.min(rev + SWAP_HALF, d.n - 1); i++) {
+		// a replay's view angles trail its movement by its key lag, so the speed dip sits that many rows earlier
+		const mid = rev - lag;
+		for (let i = Math.max(mid - SWAP_HALF, 0); i <= Math.min(mid + SWAP_HALF, d.n - 1); i++) {
 			if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
 			g += d.gain[i];
 			id += d.ideal[i];
@@ -187,7 +191,7 @@ function summarize(head, d, jumps) {
 			}
 			if (!st.gap && st.i1 > st.i0) lens.push(st.n);
 		}
-		swaps.push(...swapsOf(d, j, endIdx, replay));
+		swaps.push(...swapsOf(d, j, endIdx, replay, replay ? lag : 0));
 		const isLanded = j.e <= endIdx && j.e < d.n;
 		if (isLanded) strafes += sts.length;
 		return { num: j.num, pct: j.pct, sync: syncOver(d, [[s, e]], lag).sync, strafes: sts.length, landed: isLanded, takeoff: j.takeoff, land: j.land };
