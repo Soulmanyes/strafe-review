@@ -120,8 +120,8 @@ function when(ms) {
 // ---------- filters ----------
 
 const FILTERS = [
-	['map', 'f-map', (a) => a.dir, (v) => v],
-	['tick', 'f-tick', (a) => String(Math.round(1 / a.interval)), (v) => `${v} tick`],
+	['map', 'f-map', course, (v) => v],
+	['tick', 'f-tick', (a) => String(tickRate(a.interval)), (v) => `${v} tick`],
 	['style', 'f-style', (a) => String(a.style ?? 0), (v) => STYLES[v] || `style ${v}`],
 	['result', 'f-result', (a) => (a.reason === 'finish' ? 'finish' : 'other'), (v) => RESULTS[v]],
 	['tag', 'f-tag', allTags, (v) => v]
@@ -247,14 +247,14 @@ function renderList() {
 	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
 	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
-	const maps = [...new Set(visible.map((a) => a.dir))]; // newest attempt's map first, whatever the sort
+	const maps = [...new Set(visible.map(course))]; // newest attempt's course first, whatever the sort
 	const sorted = sortHeads(visible, syncSort(visible));
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
 		title.textContent = m;
 		box.append(title);
-		for (const a of sorted.filter((x) => x.dir === m)) {
+		for (const a of sorted.filter((x) => course(x) === m)) {
 			const b = document.createElement('button');
 			b.className = 'att';
 			b.dataset.key = `${a.dir}/${a.id}`;
@@ -429,7 +429,7 @@ async function open(dir, id) {
 	const d = parse(a);
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	// runEnd(), not just before the post tail: a replay pauses at its end and keeps sending rows
-	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: runEnd(a, d) };
+	cur = { head: a, d, jumps, j1, tps: tickRate(a.interval), endIdx: runEnd(a, d) };
 	cur.stats = summarize(a, d, jumps);
 	pathView = null;
 	cur.path = recordingPath(a, d, jumps, cur.endIdx);
@@ -467,7 +467,7 @@ function saveSetting(id, key, value, def) {
 // Jump-1 takeoff median of the other own attempts on this map and tickrate (j1Takeoff from the server)
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => course(a) === course(h) && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
@@ -575,7 +575,7 @@ function showHead() {
 	const el = $('head');
 	el.replaceChildren();
 	const name = document.createElement('b');
-	name.textContent = h.map;
+	name.textContent = h.track?.type ? course({ ...h, dir: h.map }) : h.map;
 	const facts = document.createElement('span');
 	facts.className = 'muted';
 	facts.textContent = [
@@ -814,7 +814,7 @@ function draw() {
 	g.textAlign = 'center';
 	for (let x = gridStart; x <= view.x1; x += step) {
 		if (px(x) < GUTTER + 40) continue;
-		g.fillText(`${x}  (${(x / cur.tps).toFixed(2)} s)`, px(x), ay + 12);
+		g.fillText(`${x}  (${(x * cur.head.interval).toFixed(2)} s)`, px(x), ay + 12);
 	}
 	g.textAlign = 'left';
 	g.fillText('tick from timer start', 8, ay + 12);
@@ -1141,7 +1141,7 @@ function drawHover() {
 	const f = (v, n) => (Number.isFinite(v) ? v.toFixed(n) : '–');
 	const j = cur.jumps.find((jj) => i >= jj.s && i < jj.e);
 	const fields = [
-		['tick', `${d.x[i]} (${(d.x[i] / cur.tps).toFixed(2)} s)`],
+		['tick', `${d.x[i]} (${(d.x[i] * cur.head.interval).toFixed(2)} s)`],
 		['where', d.ground[i] ? 'ground' : j ? (j.num ? `jump ${j.num}` : 'pre-jump') : 'air'],
 		['speed', f(d.speed[i], 1)],
 		['gain', d.coarse ? 'per jump only' : `${f(d.gain[i], 3)} / ${f(d.ideal[i], 3)}`],

@@ -40,13 +40,13 @@ const loaded = files.map((f) => {
 	return { a, d, jumps, endIdx };
 });
 
-// Baseline per map + interval: the other own attempts' jump-1 takeoff speeds, as the page builds it
+// Baseline per course (map + track) + interval: the other own attempts' jump-1 takeoff speeds, as the page builds it
 // from the server's j1Takeoff
 const takeoffs = {};
 for (const { a, jumps } of loaded) {
 	const j1 = jumps.find((j) => j.num === 1);
 	if (isOther(a) || !j1 || j1.takeoff < MIN_TAKEOFF) continue;
-	(takeoffs[`${a.map}@${a.interval}`] ||= []).push({ id: a.id, v: +j1.takeoff.toFixed(2) });
+	(takeoffs[`${course({ ...a, dir: a.map })}@${a.interval}`] ||= []).push({ id: a.id, v: +j1.takeoff.toFixed(2) });
 }
 
 const firstLen = [];
@@ -74,7 +74,7 @@ for (const { a, d, jumps, endIdx } of loaded) {
 			}
 		}
 	}
-	const vs = (takeoffs[`${a.map}@${a.interval}`] || []).filter((t) => t.id !== a.id).map((t) => t.v);
+	const vs = (takeoffs[`${course({ ...a, dir: a.map })}@${a.interval}`] || []).filter((t) => t.id !== a.id).map((t) => t.v);
 	const baseline = vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 	const found = runChecks(d, jumps, endIdx, allOn, baseline, !own);
 	const per = {};

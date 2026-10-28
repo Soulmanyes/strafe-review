@@ -41,7 +41,7 @@ let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for a
 let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 
 const key = (h) => `${h.dir}/${h.id}`;
-const mapKey = (h) => `${h.dir}|${h.interval}`;
+const mapKey = (h) => `${course(h)}|${h.interval}`;
 
 function quant(vs, q) {
 	if (!vs.length) return NaN;
@@ -66,7 +66,7 @@ function loadSettings() {
 // Same baseline as the main page: median jump-1 takeoff of the other own attempts on this map and tickrate
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => course(a) === course(h) && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
@@ -220,7 +220,7 @@ async function loadList() {
 	for (const [mk, h] of ms) {
 		const o = document.createElement('option');
 		o.value = mk;
-		o.textContent = `${h.dir} · ${Math.round(1 / h.interval)} tick`;
+		o.textContent = `${course(h)} · ${tickRate(h.interval)} tick`;
 		sel.append(o);
 	}
 	// follow the newest attempt's map unless one was picked by hand

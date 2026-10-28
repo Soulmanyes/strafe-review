@@ -534,9 +534,20 @@ Do these before the owner's SSJ wishVel test (to-do `strafe-review-ssj-test`).
    - Not ported: the ghost's thin A/D key strips. /compare has no keys lane.
 4. **Done (2026-10-28): end chip pushed out of the attempt card.** A long label such as `Replay: Soulmanyes. #BOTDG` pushed the end chip past the card's edge. The card's first row now wraps (the end chip drops under the label), and a chip longer than the card ends in an ellipsis.
 
+#### Bonus tracks and 66 tick v1 (2026-10-28)
+
+Owner's scope: bhop bonuses on surf maps (66 tick), not surfing itself.
+
+- **Course = map + track.** `course(h)` in data.js: the map folder for the main track, `<map> · Bonus N` (or `Stage N`) for others, from the recorder's `track` (`{type: 0 main / 1 stage / 2 bonus, number}`, Momentum's TrackType). Old files without a track are main. Storage folders and meta.json keys (`<dir>/<id>`) stay per map.
+  - Keyed on course: the main page's Map filter (one entry per course), list groups, "Fastest finish needs one map", the jump-1 takeoff baseline; /compare's map picker, picks and quick picks; /drill's map picker and baseline; `check_mistakes.js`. Autotags' PB already keyed on track. The attempt header shows the course.
+- **Tick label:** `tickRate()` names 0.015 s as 66 tick (`Math.round` said 67). Time labels on the graph axis and readout use `tick × interval`, not `tick / tps`.
+- **Timing checks scale with tickrate:** early reversal, late first strafe, wrong key, no key and W in air are tick counts at 100 tick (settings labels say so), turned into the same time at the attempt's tickrate, rounded up (66 tick: early 18 -> 12, late first 3 -> 2, wrong key 2 -> 2, no key 3 -> 2, W in air 5 -> 4). Switch offsets and `SWITCH_WINDOW` stay in ticks (target "one tick before the reversal" at any tickrate); so do the smoothing windows and skip counts. Same in the recorder's in-game line (`atRate()`); `parse()` now carries `d.interval`.
+  - Check: `node viewer/check_line.js --interval 0.015` replays every own attempt as if at 66 tick through both the recorder and the viewer (211/211 same; 8 attempts lose an early-reversal flag vs 100 tick).
+- **Physics at 66 tick:** the 30 u/s air add holds (own surf_artois Bonus 1 finish: 1254 air rows, none above ideal). Own bonus finishes: 18.75 s and 19.37 s, 84 % gain, 22-23 jumps landed. SSJ is shown at 66 tick too, not checked against a server (66-tick CS:S gain out of scope, see above).
+
 ## Later / undecided
 
-- **66-tick surf and bhop bonuses (owner, 2026-10-28, non-urgent):** make the recorder, collector and viewer work for surf maps (66 tick, see Tickrate above) and for bhop bonus tracks, not only bhop main tracks.
+- **Surf main tracks (real surfing):** not wanted (owner, 2026-10-28: "actual surfing doesn't need this, just bhop bonuses within surf"). Replays and spectates of surf runs still get saved and shown with the bhop analysis (ramps read as air, so gain and checks are meaningless there). Nothing is built for it.
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.
 - **Viewer as a tab in the Source Yaw GTK app:** to be decided later. The web page comes first.
 - **Raw mouse dx lane:**

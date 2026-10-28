@@ -5,6 +5,8 @@
 //
 //   node viewer/check_line.js [--store DIR]           feed every saved own attempt row by row through
 //                                                    the recorder code
+//   node viewer/check_line.js --interval 0.015       the same, with every attempt taken as recorded at
+//                                                    this tick interval (tickrate-scaled checks)
 //   node viewer/check_line.js --log [yaw.log]         compare the SRLINE lines the game logged
 //
 // Prints one line per attempt and a mismatch count; exits 1 if anything differs.
@@ -22,6 +24,8 @@ const { runChecks, strafesOf, strafing } = require('./static/checks.js');
 const args = process.argv.slice(2);
 const at = args.indexOf('--store');
 const store = at >= 0 ? args[at + 1] : path.join(process.env.HOME, '.local/share/strafe-review/attempts');
+const iv = args.indexOf('--interval');
+const forceInterval = iv >= 0 ? +args[iv + 1] : null;
 const GAME = path.join(process.env.HOME, '.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum');
 const RECORDER = path.join(__dirname, '../recorder/panorama/scripts/hud/strafe-review.ts');
 const DELAY = 3; // LINE_DELAY_ROWS in the recorder
@@ -87,9 +91,10 @@ function recorder() {
 	vm.createContext(ctx);
 	const src = stripTypeScriptTypes(fs.readFileSync(RECORDER, 'utf8'), { mode: 'strip' });
 	// Rows go in one at a time through lineStep(), as in the game, so the landing trigger is tested too
-	vm.runInContext(`${src}\nglobalThis.__step = (a, row) => { attempt = a; a.rows.push(row); lineStep(); };`, ctx);
-	return (id, rows, preRows) => {
+	vm.runInContext(`${src}\nglobalThis.__step = (a, row) => { attempt = a; a.rows.push(row); lineStep(); };\nglobalThis.__interval = (v) => { interval = v; };`, ctx);
+	return (id, rows, preRows, iv) => {
 		msgs.length = 0;
+		ctx.__interval(iv);
 		const a = { id, rows: [], preRows, tail: null, line: { done: false, seen: 0, at: -1 } };
 		for (const row of rows) {
 			ctx.__step(a, row);
@@ -140,10 +145,11 @@ if (args.includes('--log')) {
 	for (const [id, f] of files) {
 		const a = load(f);
 		if (a.label !== 'own') continue;
+		if (forceInterval) a.interval = forceInterval;
 		const want = viewer(a);
 		// parse() relabels old spectated recordings as 'spectate'
 		if (!want || a.label !== 'own') continue;
-		const got = work(id, a.rows.split(';'), a.preRows);
+		const got = work(id, a.rows.split(';'), a.preRows, a.interval);
 		checked++;
 		if (!got) {
 			console.log(`DIFF ${id}: recorder shows no line`);

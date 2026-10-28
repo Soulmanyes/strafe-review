@@ -17,6 +17,21 @@ function isOther(h) {
 	return h.label !== 'own';
 }
 
+// Momentum's TrackType: 0 main, 1 stage, 2 bonus. Old files without a track are main.
+const TRACK_NAMES = ['Main', 'Stage', 'Bonus'];
+
+// The course a recording ran: the map folder for the main track, "<map> · Bonus 2" for others.
+// Attempts only compare on the same course (and tickrate).
+function course(h) {
+	const t = h.track || {};
+	return t.type ? `${h.dir} · ${TRACK_NAMES[t.type] || `Track ${t.type}`} ${t.number ?? ''}`.trimEnd() : h.dir;
+}
+
+// Ticks per second as Momentum names it: 0.015 s is "66 tick", not 67
+function tickRate(interval) {
+	return Math.floor(1 / interval + 0.05);
+}
+
 function whoseRun(h) {
 	if (h.label === 'replay') return `Replay: ${h.player || 'unknown player'}`;
 	if (h.label === 'spectate') return `Spectated: ${h.player || 'unknown player'}`;
@@ -52,7 +67,7 @@ function parse(a) {
 	}
 	const n = lines.length;
 	const want = ['tick', 'gain', 'ideal', 'ratio', 'right', 'vx', 'vy', 'vz', 'yaw', 'buttons', 'wx', 'wy'];
-	const d = { n };
+	const d = { n, interval: a.interval || 0.01 };
 	for (const w of want) d[w] = new Float64Array(n);
 	lines.forEach((ln, i) => {
 		const v = ln.split(',');
@@ -528,4 +543,4 @@ function holdHeight(box, key = '') {
 	box.style.minHeight = `${held.h}px`;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, TRACK_NAMES, course, tickRate, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };

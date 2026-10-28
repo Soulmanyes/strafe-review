@@ -55,7 +55,7 @@ let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for r
 let dpi = null; // the mouse DPI typed in on the main page (mouse.js), or what Momentum stored
 
 const key = (h) => `${h.dir}/${h.id}`;
-const mapKey = (h) => `${h.dir}|${h.interval}`;
+const mapKey = (h) => `${course(h)}|${h.interval}`;
 const f = (v, n = 2) => (Number.isFinite(v) ? v.toFixed(n) : '–');
 
 function when(ms) {
@@ -106,7 +106,7 @@ function loadSettings() {
 // Same baseline as the main page: median jump-1 takeoff of the other own attempts on this map and tickrate
 function takeoffBaseline(h) {
 	const vs = list
-		.filter((a) => a.dir === h.dir && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
+		.filter((a) => course(a) === course(h) && a.interval === h.interval && !isOther(a) && a.id !== h.id && a.j1Takeoff >= MIN_TAKEOFF)
 		.map((a) => a.j1Takeoff);
 	return vs.length ? { takeoffMedian: median(vs), takeoffRuns: vs.length } : null;
 }
@@ -120,7 +120,7 @@ async function loadList() {
 	const cur = sel.value;
 	const maps = new Map();
 	for (const h of list) if (!maps.has(mapKey(h))) maps.set(mapKey(h), h); // list is newest first
-	sel.replaceChildren(...[...maps.values()].map((h) => new Option(`${h.dir} · ${Math.round(1 / h.interval)} tick`, mapKey(h))));
+	sel.replaceChildren(...[...maps.values()].map((h) => new Option(`${course(h)} · ${tickRate(h.interval)} tick`, mapKey(h))));
 	if (cur && maps.has(cur)) sel.value = cur;
 	showPicker();
 }
@@ -768,13 +768,12 @@ function draw() {
 	}
 	const last = lanes[lanes.length - 1];
 	const ay = last.y + last.h + 4;
-	const tps = Math.round(1 / ref.head.interval);
 	g.fillStyle = C.muted;
 	g.font = '11px system-ui, sans-serif';
 	g.textAlign = 'center';
 	for (let x = gridStart; x <= view.x1; x += step) {
 		if (px(x) < GUTTER + 40) continue;
-		g.fillText(`${x}  (${(x / tps).toFixed(2)} s)`, px(x), ay + 12);
+		g.fillText(`${x}  (${(x * ref.head.interval).toFixed(2)} s)`, px(x), ay + 12);
 	}
 	g.textAlign = 'left';
 	g.fillText('tick from the reference\'s timer start', 8, ay + 12);

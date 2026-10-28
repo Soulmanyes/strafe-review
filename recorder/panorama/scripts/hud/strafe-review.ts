@@ -375,6 +375,8 @@ const CFG = {
 	noKey: { minTicks: 3 },
 	switch: { early: 4, late: 2 }
 };
+// checks.js TIMED: tick counts at 100 tick, scaled to the same time at this tickrate (rounded up)
+const atRate = (ticks: number) => Math.ceil((ticks * 0.01) / interval - 1e-6);
 const SWITCH_WINDOW = 8;
 const COLLISION = 10;
 const B_LEFT = 1 << 7;
@@ -620,7 +622,7 @@ function jump1Mistakes(d: Rows, j: Jump, e: number, sts: Strafe[]): Mistake[] {
 	const first = sts[0];
 	if (first && sts.length > 1 && !first.gap) {
 		const len = d.tick[first.i1] - d.tick[turnStart(d, s, first.dir)] + 1;
-		if (len < CFG.early.minTicks) add('early', s, first.i1, `reversed after ${len} ticks`);
+		if (len < atRate(CFG.early.minTicks)) add('early', s, first.i1, `reversed after ${len} ticks`);
 	}
 
 	let at = -1;
@@ -631,7 +633,7 @@ function jump1Mistakes(d: Rows, j: Jump, e: number, sts: Strafe[]): Mistake[] {
 		}
 	}
 	const delay = at < 0 ? NaN : d.tick[at] - d.tick[s];
-	if (delay > CFG.lateFirst.maxTicks) add('lateFirst', s, at - 1, `first key ${delay} ticks late`);
+	if (delay > atRate(CFG.lateFirst.maxTicks)) add('lateFirst', s, at - 1, `first key ${delay} ticks late`);
 
 	sts.forEach((st, k) => {
 		if (st.gap || st.n < 8) return;
@@ -651,9 +653,9 @@ function jump1Mistakes(d: Rows, j: Jump, e: number, sts: Strafe[]): Mistake[] {
 	});
 
 	const judged = (i: number) => d.key[i] !== 0 && !turnBtn(d, i) && !nearReversal(i);
-	for (const r of runsOf(d, s, e, (i) => judged(i) && keyDir(d.buttons[i]) === -d.key[i], CFG.wrongKey.minTicks))
+	for (const r of runsOf(d, s, e, (i) => judged(i) && keyDir(d.buttons[i]) === -d.key[i], atRate(CFG.wrongKey.minTicks)))
 		add('wrongKey', r.i0, r.i1, `wrong key ${r.i1 - r.i0 + 1} ticks`);
-	for (const r of runsOf(d, s, e, (i) => judged(i) && !(d.buttons[i] & (B_MOVELEFT | B_MOVERIGHT)), CFG.noKey.minTicks))
+	for (const r of runsOf(d, s, e, (i) => judged(i) && !(d.buttons[i] & (B_MOVELEFT | B_MOVERIGHT)), atRate(CFG.noKey.minTicks)))
 		add('noKey', r.i0, r.i1, `no key ${r.i1 - r.i0 + 1} ticks`);
 
 	const sw = switchesOf(d, s, e);
