@@ -411,7 +411,13 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Notes and tags** per attempt (for example "new sens"), with a filter by tag.
 - **Filters** by map, tickrate, style (normal, sideways, HSW) and finished or failed.
 - **PNG export** of a graph or jump view.
-  - **Next (owner, 2026-10-28):** export page sections as screenshots, one image per section: Run stats in one, the graphs in one, the path in one. Not built yet; how (button per section, copy vs download, which pages besides the main one) still to settle.
+  - **Section pictures v1 (owner, 2026-10-28):** one image per section. Each section has its own Copy (clipboard) and Save (PNG file) buttons. On the main page these are Run stats, the graph ("Copy graph" / "Save graph" in the toolbar) and the path. On /compare they are Stats, Graph and Path. The drill page has none.
+    - `viewer/static/snap.js`, no library. It clones the section, writes each element's computed style inline and swaps canvases for images. Then it wraps the clone in an SVG foreignObject and draws that onto a canvas at the screen's pixel ratio, on the page background.
+    - On top of each picture: the main page puts the attempt header (course, player, result, time). /compare puts a "Compare · map · alignment" line.
+    - Left out: buttons, inputs, how-to hints, plain header explanations and the hover readout. On /compare, the legend and the path's on Focus / Compare labels stay so the colours can be read.
+    - Save names look like `surf_artois-b1_Own-run_run-stats.png`. Copy needs a secure page (localhost) and Firefox 127+; otherwise it says to use Save.
+    - **Check:** headless Firefox over WebDriver BiDi rendered all six pictures, and the button placement was screenshot-checked. The clipboard was not tested (it needs a real click).
+    - Per jump and Mistakes on /compare could get buttons later.
 - **Sort and search in the recording lists (owner, 2026-10-28):** on both the main page's sidebar list and the /compare picker list, own runs and replays alike.
   - Sort: for example newest first, time, jump-1 gain, player name. Kept in localStorage.
   - Search: a text box matching player name, map, tags and note. It stacks with the existing filters.

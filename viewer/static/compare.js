@@ -1262,6 +1262,20 @@ initSort($('sort'), SORT_KEY, showPicker);
 new ResizeObserver(() => draw()).observe($('plot'));
 addEventListener('scroll', hideRsTip, { passive: true });
 
+// ---------- section pictures ----------
+
+// Copy / Save buttons (snap.js): each picture has the map and alignment on top, then the section (the
+// graph's and path's keep their legend of which colour is which recording)
+{
+	const mapText = () => $('map').selectedOptions[0]?.text || '';
+	const caption = () => `Compare · ${mapText()} · ${$('align').selectedOptions[0].text.toLowerCase()}`;
+	for (const [id, part] of [['stats', 'stats'], ['graph', 'graph'], ['path-sec', 'path']]) {
+		const head = $(id).querySelector('.sec-head');
+		// the graph's go next to Whole run / Jump 1, before the alignment note that fills the line
+		head.insertBefore(snapButtons(part, () => (shown.length >= 2 ? [caption(), $(id)] : null), () => `${mapText()} · compare ${part}`), head.querySelector('.align-tip'));
+	}
+}
+
 const es = new EventSource('/api/events');
 es.onopen = () => $('live').classList.remove('off');
 es.onerror = () => $('live').classList.add('off');

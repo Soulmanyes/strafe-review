@@ -62,3 +62,4 @@ table.cmp td.miss { color: var(--muted); }
 #path-roles button.on { background: var(--card-hi); border-color: var(--accent); color: var(--text); }
 #presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 #presets button.on { color: var(--text); background: var(--card-hi); border-width: 2px; }
+#graph .sec-head .snap-btns { margin-left: 0; }

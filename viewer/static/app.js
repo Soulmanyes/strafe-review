@@ -1589,6 +1589,18 @@ $('dpi').onchange = () => {
 	showRunStats();
 };
 
+// ---------- section pictures ----------
+
+// Copy / Save buttons (snap.js): each picture has the attempt header on top, then the section
+{
+	const snapName = (part) => `${cur.head.track?.type ? course({ ...cur.head, dir: cur.head.map }) : cur.head.map} · ${labelText(cur.head)} · ${part}`;
+	const add = (where, part, el, before = null) => where.insertBefore(snapButtons(part, () => (cur ? [$('head'), el] : null), () => snapName(part)), before);
+	add($('run-stats').querySelector('.sec-head'), 'run stats', $('run-stats'));
+	// no header above the graph, so these say what they copy
+	for (const b of add($('toolbar'), 'graph', $('plot'), $('settings')).children) b.textContent = b.dataset.label = `${b.dataset.label} graph`;
+	add($('path-sec').querySelector('.sec-head'), 'path', $('path-sec'));
+}
+
 // A new attempt saved by the collector shows up in the list at once (the open one stays open)
 new EventSource('/api/events').addEventListener('attempt', loadList);
 

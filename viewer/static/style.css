@@ -285,3 +285,7 @@ h2 { font-size: 15px; margin: 0; }
 .rs-row:hover { background: var(--card-hi); border-radius: 4px; }
 .rs-row .rs-link { cursor: pointer; text-decoration: underline dotted; }
 .rs-row .rs-link:hover { color: var(--accent); }
+
+/* Copy / Save picture buttons (snap.js), kept together at the right of a section header */
+.snap-btns { display: flex; gap: 4px; margin-left: auto; }
+.snap-btns button { margin-left: 0; }
