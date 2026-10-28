@@ -151,8 +151,10 @@ def replay_run_time(data):
 def replay_finished(data):
     """Momentum swaps a replay's timer (OnObservedTimerReplaced) when it loops, a tick before the timer
     would read FINISHED, so the recorder saves a replay played to the end as 'replaced'. Such a replay
-    becomes a finish with the replay file's run time; the recorded end stays in recordedRunTime."""
-    if data.get("label") != "replay" or data.get("reason") != "replaced" or not data.get("runTime"):
+    becomes a finish with the replay file's run time; the recorded end stays in recordedRunTime. Recorders
+    with the replay rescan save it as 'finish' with the last run time seen while playing (a tick or so
+    short, like 'replaced'), so those get the file's run time too."""
+    if data.get("label") != "replay" or data.get("reason") not in ("replaced", "finish") or not data.get("runTime"):
         return
     t = replay_run_time(data)
     if t is not None and t - data["runTime"] <= REPLAY_FINISH_TICKS * data["interval"] + 1e-6:

@@ -1,6 +1,7 @@
 // Strafe Review recorder. Loaded next to timer.ts (see layout/hud/timer.xml).
 // Records one row per physics tick, keeps the last 2 s before the timer starts, and dumps
-// each attempt to yaw.log as [panorama] SRREC lines when it ends. Reads only; sends no inputs.
+// each attempt to yaw.log as [panorama] SRREC lines when it ends. Reads only and sends no inputs, except
+// on a replay paused at its end: it steps the paused replay through the ticks it missed (see "Replay rescan").
 //
 // Wire format (format 1), all lines start with "SRREC <id> ":
 //   <id> <i>/<n> <text>        chunk i of n; joined in order they form one JSON object
@@ -16,6 +17,7 @@ const TIMER_PRIMED = 1;
 const TIMER_RUNNING = 2;
 const TIMER_FINISHED = 3;
 const REPLAY_NONE = 0;
+const REPLAY_PAUSED = 2;
 const MOVETYPE_OBSERVER = 10; // MomentumMovementAPI.MoveType.OBSERVER
 
 const PRESTART_SECONDS = 2;
@@ -47,7 +49,8 @@ const COLS = [
 	'duck',
 	'rtick', // replay curtick while a replay plays, else -1
 	'wx', // GetMoveHudData().wishVel x/y: the game's own wish velocity, to check the viewer's CS:S gain
-	'wy'
+	'wy',
+	'seek' // 1: read by the replay rescan after playback (a tick missed while playing), else 0
 ];
 
 interface Attempt {
@@ -151,10 +154,26 @@ function sample() {
 	if (attempt && lastTick >= 0 && tick > lastTick + 1) attempt.gaps += tick - lastTick - 1;
 	lastTick = tick;
 
+	const replaying = MomentumReplayAPI.GetReplayState() !== REPLAY_NONE;
+	const row = rowNow(tick, replaying ? MomentumReplayAPI.GetReplayProgress().curtick : -1, 0);
+
+	ring.push(row);
+	if (ring.length > ringSize) ring.shift();
+	if (attempt) {
+		attempt.rows.push(row);
+		const status = MomentumTimerAPI.GetObservedTimerStatus();
+		if (status.state === TIMER_RUNNING) attempt.runTime = status.runTime;
+		if (attempt.tail && tick >= attempt.tail.untilTick) finishTail();
+	}
+}
+
+// One row (COLS) of what the APIs read now
+function rowNow(tick: number, rtick: number, seek: number) {
+	const stats = MomentumMovementAPI.GetLastTickStats();
+	const vel = MomentumPlayerAPI.GetVelocity();
 	const ang = MomentumPlayerAPI.GetAngles();
 	const move = MomentumMovementAPI.GetMoveHudData();
-	const replaying = MomentumReplayAPI.GetReplayState() !== REPLAY_NONE;
-	const row = [
+	return [
 		tick,
 		r(stats.speedGain, 3),
 		r(stats.idealGain, 3),
@@ -168,19 +187,11 @@ function sample() {
 		MomentumInputAPI.GetButtons().physicalButtons,
 		move.moveStatus,
 		MomentumPlayerAPI.IsDucking() ? 1 : 0,
-		replaying ? MomentumReplayAPI.GetReplayProgress().curtick : -1,
+		rtick,
 		r(move.wishVel.x, 2),
-		r(move.wishVel.y, 2)
+		r(move.wishVel.y, 2),
+		seek
 	].join(',');
-
-	ring.push(row);
-	if (ring.length > ringSize) ring.shift();
-	if (attempt) {
-		attempt.rows.push(row);
-		const status = MomentumTimerAPI.GetObservedTimerStatus();
-		if (status.state === TIMER_RUNNING) attempt.runTime = status.runTime;
-		if (attempt.tail && tick >= attempt.tail.untilTick) finishTail();
-	}
 }
 
 function hspeed() {
@@ -274,7 +285,8 @@ function specName(): string | null {
 	return p && p.name ? p.name : null;
 }
 
-function endAttempt(reason: string) {
+// runTime: the run time to save; by default the timer's (finish) or the last one seen while running
+function endAttempt(reason: string, runTime?: number) {
 	if (!attempt) return;
 	const status = MomentumTimerAPI.GetObservedTimerStatus();
 	const data = JSON.stringify({
@@ -285,7 +297,7 @@ function endAttempt(reason: string) {
 		rows: attempt.rows.join(';'),
 		events: attempt.events,
 		reason,
-		runTime: attempt.tail ? attempt.runTime : status.state === TIMER_FINISHED ? status.runTime : attempt.runTime,
+		runTime: runTime ?? (attempt.tail ? attempt.runTime : status.state === TIMER_FINISHED ? status.runTime : attempt.runTime),
 		gaps: attempt.gaps,
 		ended: Date.now()
 	});
@@ -302,10 +314,12 @@ function flush() {
 }
 
 function event(kind: string, fields: Record<string, unknown>) {
+	if (rescanBusy()) return;
 	attempt?.events.push({ tick: lastTick, kind, ...fields });
 }
 
 function onTimerState() {
+	if (rescanBusy()) return; // its seeks move the observed timer
 	const status = MomentumTimerAPI.GetObservedTimerStatus();
 	if (status.state === TIMER_RUNNING && lastState !== TIMER_RUNNING) {
 		if (attempt?.tail) finishTail(); // started again inside the tail
@@ -322,6 +336,7 @@ function onTimerState() {
 }
 
 function onJump() {
+	if (rescanBusy()) return;
 	const s = MomentumMovementAPI.GetLastJumpStats();
 	event('jump', {
 		n: s.jumpCount,
@@ -340,6 +355,7 @@ function onJump() {
 
 // A new observed target or timer must never be glued onto the attempt that was running
 function onTargetChange(why: string) {
+	if (rescanBusy()) return; // every rescan seek fires OnObservedTimerReplaced
 	endAttempt(why);
 	lastState = MomentumTimerAPI.GetObservedTimerStatus().state;
 	lastKey = '';
@@ -777,8 +793,139 @@ function lineStep() {
 	}
 }
 
+// ---------------------------------------------------------------------------------------------
+// Replay rescan. The recorder reads once per frame, so a frame longer than a tick loses that tick's row
+// (5 of 2368 rows on one replay). When a recorded replay is paused at its end, the replay is still
+// loaded: the rescan steps it to each missed tick, reads the row, goes back to the end and dumps the
+// attempt with the rows put in place ('seek' 1). Seek probe 2026-10-28 (recorder/probe/
+// strafe-review-seek-probe.ts, PLAN.md "Replay rescan"): after a seek to curtick c the APIs read what
+// playback recorded as rtick c + 1, speed, keys and wishVel exactly. Yaw reads playback's value at
+// once after GoTo() or GoToPreviousTick(), but drifts for ~17 frames after GoToNextTick(), so every
+// tick is reached from above with GoToPreviousTick(). Each seek fires OnObservedTimerReplaced, so the
+// other handlers do nothing while it runs. Unpausing stops it and dumps what it has.
+
+const RESCAN_MAX = 600; // missed rows rescanned per attempt (about 4 frames each)
+const RESCAN_SETTLE = 2; // frames after a seek before curtick is checked
+const RESCAN_TRIES = 8; // seeks allowed to reach one tick, then it stays missed
+const RESCAN_QUIET = 10; // frames after the rescan in which its last seeks' events are still ignored
+const COL_TICK = 0;
+const COL_RTICK = COLS.indexOf('rtick');
+
+interface Rescan {
+	todo: number[]; // rticks to read, highest first
+	offset: number; // tick - rtick while the replay played
+	total: number;
+	target: number; // curtick to seek to (rtick - 1), -1 between rows, -2 going back to the end
+	seen: boolean; // target reached; read on the next frame
+	wait: number;
+	tries: number;
+	rows: string[];
+}
+
+let rescan: Rescan | null = null;
+let rescanQuiet = 0;
+const rescanBusy = () => rescan !== null || rescanQuiet > 0;
+
+// A replay attempt whose replay sits paused at its last tick: rescan its missed rows, then dump it
+function replayEnd() {
+	const a = attempt;
+	if (!a || a.tail || a.head.label !== 'replay' || MomentumReplayAPI.GetReplayState() !== REPLAY_PAUSED) return;
+	const p = MomentumReplayAPI.GetReplayProgress();
+	if (p.totalticks <= 0 || p.curtick < p.totalticks) return;
+	const have = new Set<number>();
+	const offsets = new Map<number, number>();
+	for (const row of a.rows) {
+		const f = row.split(',');
+		const rt = Number(f[COL_RTICK]);
+		if (rt < 0) continue;
+		have.add(rt);
+		const off = Number(f[COL_TICK]) - rt;
+		offsets.set(off, (offsets.get(off) || 0) + 1);
+	}
+	// the run time seen while it played: the rescan's seeks move the timer (one read 0.005 s after them)
+	if (have.size < 2) return endAttempt('finish', a.runTime);
+	let offset = 0;
+	let most = 0;
+	for (const [off, n] of offsets) if (n > most) [offset, most] = [off, n];
+	const lo = Math.min(...have);
+	const hi = Math.max(...have);
+	const todo: number[] = [];
+	for (let rt = hi - 1; rt > lo && todo.length < RESCAN_MAX; rt--) if (!have.has(rt)) todo.push(rt);
+	if (!todo.length) return endAttempt('finish', a.runTime);
+	rescan = { todo, offset, total: p.totalticks, target: -1, seen: false, wait: 0, tries: 0, rows: [] };
+}
+
+function rescanStep() {
+	const s = rescan!;
+	if (MomentumReplayAPI.GetReplayState() !== REPLAY_PAUSED) return endRescan(false);
+	if (s.wait > 0) {
+		s.wait--;
+		return;
+	}
+	const cur = MomentumReplayAPI.GetReplayProgress().curtick;
+	if (s.target === -2) {
+		if (cur >= s.total || s.tries++ >= RESCAN_TRIES) return endRescan(true);
+		MomentumReplayAPI.GoToEnd();
+		s.wait = RESCAN_SETTLE;
+		return;
+	}
+	if (s.target === -1) {
+		const next = s.todo.shift();
+		if (next === undefined) {
+			s.target = -2;
+			s.tries = 0;
+			return;
+		}
+		s.target = next - 1;
+		s.seen = false;
+		s.tries = 0;
+	}
+	if (cur === s.target) {
+		if (!s.seen) {
+			s.seen = true; // values follow curtick within a frame (probe): read on the next one
+			return;
+		}
+		const rt = s.target + 1;
+		s.rows.push(rowNow(rt + s.offset, rt, 1));
+		s.target = -1;
+		return;
+	}
+	s.seen = false;
+	if (s.tries++ >= RESCAN_TRIES) {
+		s.target = -1; // couldn't land on it: it stays a missed tick
+		return;
+	}
+	// from above only: a step forward leaves the view angles drifting
+	if (cur > s.target && cur - s.target <= 3) MomentumReplayAPI.GoToPreviousTick();
+	else MomentumReplayAPI.GoTo(Math.min(s.target + 2, s.total) / s.total);
+	s.wait = RESCAN_SETTLE;
+}
+
+// Put the rescanned rows in tick order and dump the attempt (at the end, or unpaused midway)
+function endRescan(atEnd: boolean) {
+	const s = rescan;
+	const a = attempt;
+	rescan = null;
+	rescanQuiet = RESCAN_QUIET;
+	lastKey = '';
+	if (!s || !a) return;
+	const tickOf = (row: string) => Number(row.slice(0, row.indexOf(',')));
+	const startTick = a.preRows < a.rows.length ? tickOf(a.rows[a.preRows]) : Infinity;
+	a.rows = a.rows.concat(s.rows).sort((x, y) => tickOf(x) - tickOf(y));
+	a.preRows = a.rows.findIndex((row) => tickOf(row) >= startTick);
+	if (a.preRows < 0) a.preRows = a.rows.length;
+	a.gaps = Math.max(0, a.gaps - s.rows.length);
+	a.events.push({ tick: lastTick, kind: 'rescan', rows: s.rows.length, wanted: s.rows.length + s.todo.length, atEnd });
+	endAttempt('finish', a.runTime);
+}
+
 function loop() {
-	guard('sample', sample);
+	if (rescanQuiet > 0) rescanQuiet--;
+	if (rescan) guard('rescan', rescanStep);
+	else {
+		guard('sample', sample);
+		guard('replay end', replayEnd);
+	}
 	guard('line', lineStep);
 	if (attempt?.tail && Date.now() > attempt.tail.untilMs) guard('tail', finishTail);
 	guard('flush', flush);
