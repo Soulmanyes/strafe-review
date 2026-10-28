@@ -274,9 +274,13 @@ h2 { font-size: 15px; margin: 0; }
 .rs-card h3 { font-size: 13px; margin: 0 0 4px; color: var(--accent); }
 .rs-card .rs-off { color: var(--muted); font-size: 12px; }
 .rs-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 1px 0; }
-.rs-row .rs-name { color: var(--muted); cursor: help; }
+.rs-row .rs-name { color: var(--muted); }
 .rs-row .rs-val { margin-left: auto; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .rs-row .rs-ghost { color: var(--ghost); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; white-space: nowrap; }
-.rs-desc { color: var(--muted); font-size: 11.5px; line-height: 1.3; margin: 0 0 4px; }
+#rs-tip { position: fixed; z-index: 50; max-width: 340px; background: var(--card-hi); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+#rs-tip[hidden] { display: none; }
+#rs-tip .rs-tip-how { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+.rs-row { cursor: help; }
+.rs-row:hover { background: var(--card-hi); border-radius: 4px; }
 .rs-row .rs-link { cursor: pointer; text-decoration: underline dotted; }
 .rs-row .rs-link:hover { color: var(--accent); }

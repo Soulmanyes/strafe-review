@@ -810,11 +810,32 @@ function runStatRows() {
 	];
 }
 
+// Hover tip for a run stat: the plain description, then how it's measured. Shows at once (a title
+// attribute waits about a second) and sits under the row.
+function showRsTip(el, row) {
+	const t = $('rs-tip');
+	t.replaceChildren();
+	if (row.desc) t.append(Object.assign(document.createElement('div'), { textContent: row.desc }));
+	if (row.tip) t.append(Object.assign(document.createElement('div'), { className: 'rs-tip-how', textContent: `Measured: ${row.tip}` }));
+	t.hidden = false;
+	const r = el.getBoundingClientRect();
+	const w = t.offsetWidth;
+	t.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+	const below = r.bottom + 4;
+	t.style.top = `${below + t.offsetHeight > innerHeight - 8 ? r.top - t.offsetHeight - 4 : below}px`;
+}
+
+function hideRsTip() {
+	$('rs-tip').hidden = true;
+}
+$('main').addEventListener('scroll', hideRsTip, { passive: true });
+
 function showRunStats() {
 	const sec = $('run-stats');
 	sec.hidden = !cur;
 	if (!cur) return;
 	const box = $('rs-body');
+	hideRsTip(); // its row is about to be replaced
 	box.replaceChildren();
 	box.classList.toggle('with-ghost', !!ghost);
 	const me = { head: cur.head, d: cur.d, path: cur.path, mistakes: cur.mistakes };
@@ -846,7 +867,6 @@ function showRunStats() {
 			const name = document.createElement('span');
 			name.className = 'rs-name';
 			name.textContent = row.name;
-			if (row.tip) name.title = row.tip;
 			const val = document.createElement('span');
 			val.className = 'rs-val';
 			if (skip(me, row.need)) {
@@ -869,13 +889,11 @@ function showRunStats() {
 				g.textContent = skip(gh, row.need) || row.ghost === false ? '–' : row.v(ghost.stats, gh);
 				el.append(g);
 			}
-			c.append(el);
-			if (row.desc) {
-				const ds = document.createElement('div');
-				ds.className = 'rs-desc';
-				ds.textContent = row.desc;
-				c.append(ds);
+			if (row.desc || row.tip) {
+				el.onmouseenter = () => showRsTip(el, row);
+				el.onmouseleave = hideRsTip;
 			}
+			c.append(el);
 		}
 		box.append(c);
 	}
