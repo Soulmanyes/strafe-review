@@ -203,12 +203,14 @@ function renderList() {
 	// the open attempt stays listed even when it is a hidden drill or filtered out
 	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');
 	const visible = list.filter((a) => `${a.dir}/${a.id}` === openKey || shown(a));
+	const hasShown = (m) => visible.some((a) => a.dir === m && shown(a));
 	const total = list.filter((a) => !isFragment(a)).length;
 	const hits = list.filter(shown).length;
 	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
 	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
-	const maps = [...new Set(visible.map((a) => a.dir))]; // newest attempt's map first, whatever the sort
+	// newest attempt's map first, whatever the sort; a map listed only for the open attempt goes last
+	const maps = [...new Set(visible.map((a) => a.dir))].sort((x, y) => !hasShown(x) - !hasShown(y));
 	const sorted = sortHeads(visible, syncSort());
 	for (const m of maps) {
 		const title = document.createElement('div');
