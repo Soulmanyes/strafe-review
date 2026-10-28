@@ -71,6 +71,8 @@ const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
 const ALIGN_KEY = 'strafe-review-align';
 const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
+const YAW_SIGNED_KEY = 'strafe-review-yaw-signed';
+const YAW_SUB = { size: '°/tick vs optimal', signed: '°/tick, + left, - right' };
 // A drill: an own attempt that didn't finish and landed this many jumps or fewer (jump 1 or SSJ practice)
 const DRILL_MAX_JUMPS = 7;
 
@@ -673,6 +675,32 @@ function ghostLine(g, val, Y, ok) {
 	g.setLineDash([]);
 }
 
+// Yaw speed with its direction (up = left turn, as the drill page): the optimal and its band sit on
+// the side the turn needs, one line per side, so a strafe change is a gap and not a slope
+function yawSigned(g, l, d, i0, i1, hi) {
+	const Y = yMap(l, -hi, hi);
+	g.strokeStyle = '#5a6478';
+	g.lineWidth = 1;
+	g.beginPath();
+	g.moveTo(GUTTER, Y(0));
+	g.lineTo(base.clientWidth, Y(0));
+	g.stroke();
+	g.fillStyle = COL.band;
+	for (let i = i0; i <= i1; i++) {
+		const o = d.opt[i];
+		const s = d.ideal_key[i];
+		if (!Number.isFinite(o) || !s) continue;
+		const y1 = Y(s * o * 1.15);
+		const y2 = Y(s * o * 0.85);
+		g.fillRect(px(d.x[i] - 0.5), Math.min(y1, y2), Math.max(px(d.x[i] + 0.5) - px(d.x[i] - 0.5), 1), Math.abs(y2 - y1));
+	}
+	line(g, d, i0, i1, (i) => d.yawd[i], Y, COL.raw, 1);
+	ghostLine(g, (i) => ghost.gd.yaws[i], Y, air);
+	for (const side of [1, -1]) line(g, d, i0, i1, (i) => side * d.opt[i], Y, COL.opt, 1.5, (i) => d.ideal_key[i] === side);
+	line(g, d, i0, i1, (i) => d.yaws[i], Y, COL.line, 2, air(d));
+	yLabels(l, Y, [hi, hi / 2, 0, -hi / 2, -hi], (v) => v.toFixed(1));
+}
+
 const LANE_DRAW = {
 	jumps(g, l, d) {
 		g.font = '600 12px system-ui, sans-serif';
@@ -724,6 +752,8 @@ const LANE_DRAW = {
 		// scales come from the whole attempt, so panning or zooming never rescales a lane
 		const optMax = quantile(d, 0, d.n - 1, (i) => (ok(i) ? d.opt[i] : NaN), 0.98);
 		const hi = Number.isFinite(optMax) ? optMax * 2.2 : Math.max(1, quantile(d, 0, d.n - 1, (i) => Math.abs(d.yawd[i]), 0.98));
+		// signed, each side has half the lane, so the scale is tighter (raw spikes past it are clipped)
+		if ($('yaw-signed').checked) return yawSigned(g, l, d, i0, i1, hi / 1.6);
 		const Y = yMap(l, 0, hi);
 		// optimal band, 85-115 %
 		g.fillStyle = COL.band;
@@ -1000,6 +1030,13 @@ $('to-compare').onclick = () => {
 	location.href = `/compare#${cur.head.dir}/${ids.join(',')}`;
 };
 $('align').onchange = compareChanged;
+$('yaw-signed').checked = localStorage.getItem(YAW_SIGNED_KEY) === '1';
+LANES.find((l) => l.id === 'yaw').sub = YAW_SUB[$('yaw-signed').checked ? 'signed' : 'size'];
+$('yaw-signed').onchange = () => {
+	localStorage.setItem(YAW_SIGNED_KEY, $('yaw-signed').checked ? '1' : '0');
+	LANES.find((l) => l.id === 'yaw').sub = YAW_SUB[$('yaw-signed').checked ? 'signed' : 'size'];
+	draw();
+};
 $('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
 $('show-drills').onchange = () => {
 	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');
