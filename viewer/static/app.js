@@ -724,87 +724,87 @@ function runStatRows() {
 		{
 			title: 'Run',
 			rows: [
-				{ name: 'End', tip: 'Finish time, or how the attempt ended', v: (s, r) => endOf(r.head) },
-				{ name: 'Jumps landed', tip: 'Jumps from jump 1 on that landed before the run end', v: (s) => `${s.landed} of ${s.jumps}` },
-				{ name: 'Missed ticks', tip: 'Ticks the HUD missed inside the run (frames slower than ticks)', v: (s, r) => String(runGaps(r.head, r.d)) },
-				{ name: 'Distance', tip: 'Horizontal distance from the timer start to the run end, built up from speed (teleports add nothing)', v: (s, r) => `${Math.round(pathDistance(r.path, Math.min(r.head.preRows || 0, r.d.n - 1), s.endIdx))} u` },
-				{ name: 'Air time', tip: 'Share of the run ticks in the air (vz not 0)', v: (s) => n(s.airPct, 1, ' %'), need: 'tick' }
+				{ name: 'End', desc: 'Your finish time, or how the attempt stopped.', tip: 'Finish time, or how the attempt ended', v: (s, r) => endOf(r.head) },
+				{ name: 'Jumps landed', desc: 'Jumps from jump 1 that touched ground again before the run ended.', tip: 'Jumps from jump 1 on that landed before the run end', v: (s) => `${s.landed} of ${s.jumps}` },
+				{ name: 'Missed ticks', desc: 'Ticks the recorder didn\'t see (game frames slower than ticks). Their numbers are guessed or left out.', tip: 'Ticks the HUD missed inside the run (frames slower than ticks)', v: (s, r) => String(runGaps(r.head, r.d)) },
+				{ name: 'Distance', desc: 'How far you travelled (horizontal only). Shorter = tighter line.', tip: 'Horizontal distance from the timer start to the run end, built up from speed (teleports add nothing)', v: (s, r) => `${Math.round(pathDistance(r.path, Math.min(r.head.preRows || 0, r.d.n - 1), s.endIdx))} u` },
+				{ name: 'Air time', desc: 'Share of the run spent in the air. Close to 100 % = clean bhops.', tip: 'Share of the run ticks in the air (vz not 0)', v: (s) => n(s.airPct, 1, ' %'), need: 'tick' }
 			]
 		},
 		{
 			title: 'Gain',
 			rows: [
-				{ name: 'Gain %', tip: 'Sum of gain over sum of ideal gain, every jump from jump 1 on (as the jump strip)', v: (s) => n(s.gainPct, 2, ' %') },
-				{ name: 'Speed lost', tip: 'Sum of ideal - gain over every strafing tick (air, 100+ u/s, no wall hit): speed you could have had', v: (s) => n(s.lost, 0, ' u/s'), need: 'tick' },
-				{ name: 'Best jump', tip: 'Landed jump with the highest gain %', v: (s, r) => jumpOf(r, s.bestJump), click: (s) => s.bestJump && zoomJump(s.bestJump.num) },
-				{ name: 'Worst jump', tip: 'Landed jump with the lowest gain %', v: (s, r) => jumpOf(r, s.worstJump), click: (s) => s.worstJump && zoomJump(s.worstJump.num) },
-				{ name: 'Spread', tip: 'Standard deviation of the landed jumps\' gain %: lower = more even jump to jump', v: (s) => n(s.spread, 1, ' %') },
-				{ name: 'Left / right', tip: 'Gain % on ticks turning left (A side) and turning right (D side)', v: (s) => `${n(s.leftPct, 1)} / ${n(s.rightPct, 1)} %`, need: 'tick' }
+				{ name: 'Gain %', desc: 'How much of the speed you could have gained you actually gained. 100 % = perfect strafing.', tip: 'Sum of gain over sum of ideal gain, every jump from jump 1 on (as the jump strip)', v: (s) => n(s.gainPct, 2, ' %') },
+				{ name: 'Speed lost', desc: 'Speed you would have had on top with perfect strafing, added up over the run.', tip: 'Sum of ideal - gain over every strafing tick (air, 100+ u/s, no wall hit): speed you could have had', v: (s) => n(s.lost, 0, ' u/s'), need: 'tick' },
+				{ name: 'Best jump', desc: 'Your jump with the highest gain %. Click to see it.', tip: 'Landed jump with the highest gain %', v: (s, r) => jumpOf(r, s.bestJump), click: (s) => s.bestJump && zoomJump(s.bestJump.num) },
+				{ name: 'Worst jump', desc: 'Your jump with the lowest gain %. Click to see it.', tip: 'Landed jump with the lowest gain %', v: (s, r) => jumpOf(r, s.worstJump), click: (s) => s.worstJump && zoomJump(s.worstJump.num) },
+				{ name: 'Spread', desc: 'How much gain % changes from jump to jump. Lower = more consistent.', tip: 'Standard deviation of the landed jumps\' gain %: lower = more even jump to jump', v: (s) => n(s.spread, 1, ' %') },
+				{ name: 'Left / right', desc: 'Gain % while turning left vs turning right. A big difference means one side is weaker.', tip: 'Gain % on ticks turning left (A side) and turning right (D side)', v: (s) => `${n(s.leftPct, 1)} / ${n(s.rightPct, 1)} %`, need: 'tick' }
 			]
 		},
 		{
 			title: 'Speed',
 			rows: [
-				{ name: 'Max', v: (s) => n(s.speedMax, 0, ' u/s') },
-				{ name: 'Average', tip: 'Horizontal speed averaged over the run ticks', v: (s) => n(s.speedAvg, 0, ' u/s') },
-				{ name: 'At the end', tip: 'At the finish, or at the end of the recording', v: (s) => n(s.speedEnd, 0, ' u/s') },
-				{ name: 'Jump 1 takeoff', v: (s) => (s.j1 ? n(s.j1.takeoff, 1, ' u/s') : '–') },
-				{ name: 'Jump 1 landing', v: (s) => (s.j1 && s.j1.landed ? n(s.j1.land, 1, ' u/s') : '–') },
-				{ name: 'Jump 1 gain', v: (s) => (s.j1 ? n(s.j1.pct, 2, ' %') : '–'), click: () => zoomJump(1) }
+				{ name: 'Max', desc: 'Top horizontal speed in the run.', v: (s) => n(s.speedMax, 0, ' u/s') },
+				{ name: 'Average', desc: 'Average horizontal speed over the run.', tip: 'Horizontal speed averaged over the run ticks', v: (s) => n(s.speedAvg, 0, ' u/s') },
+				{ name: 'At the end', desc: 'Speed at the finish (or where the recording stops).', tip: 'At the finish, or at the end of the recording', v: (s) => n(s.speedEnd, 0, ' u/s') },
+				{ name: 'Jump 1 takeoff', desc: 'Speed leaving the start zone ground: how good the prestrafe was.', v: (s) => (s.j1 ? n(s.j1.takeoff, 1, ' u/s') : '–') },
+				{ name: 'Jump 1 landing', desc: 'Speed when jump 1 lands. Takeoff + what you gained on jump 1.', v: (s) => (s.j1 && s.j1.landed ? n(s.j1.land, 1, ' u/s') : '–') },
+				{ name: 'Jump 1 gain', desc: 'Gain % on jump 1 alone. Click to see it.', v: (s) => (s.j1 ? n(s.j1.pct, 2, ' %') : '–'), click: () => zoomJump(1) }
 			]
 		},
 		{
 			title: 'Turning',
 			rows: [
-				{ name: 'Angle (yawRatio)', tip: 'Median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out). 1 = optimal', v: (s) => n(s.angle, 2), need: 'tick' },
-				{ name: 'In optimal band', tip: `Strafe-middle ticks at yawRatio ${BAND_LO}-${BAND_HI} (the yaw lane's band)`, v: (s) => n(s.inBand, 1, ' %'), need: 'tick' },
-				{ name: 'Too slow / too fast', tip: `Strafe-middle ticks under ${BAND_LO} / over ${BAND_HI}`, v: (s) => `${n(s.tooSlow, 1)} / ${n(s.tooFast, 1)} %`, need: 'tick' },
-				{ name: 'Turn speed', tip: 'Median turn speed of strafe middles (5-tick average), and in mouse terms when the DPI is set (a replay at your sens)', v: (s, r) => `${n(s.yawMid, 2, '°/t')}${cms(r, s.yawMid)}`, need: 'tick' },
-				{ name: 'Strafes per jump', tip: 'Turns to one side per landed jump', v: (s) => n(s.strafesPerJump, 1), need: 'tick' },
-				{ name: 'Strafe length', tip: 'Median ticks of one strafe (one turn to one side)', v: (s) => n(s.strafeLen, 0, ' t'), need: 'tick' },
-				{ name: 'Air time turning', tip: 'Strafing ticks with a turn of more than 0.3°/tick', v: (s) => n(s.turnPct, 1, ' %'), need: 'tick' },
-				{ name: '+left/+right ticks', tip: 'Strafing ticks with a turn button held (fixed cl_yawspeed turn, left out of the angle numbers)', v: (s) => String(s.btnTicks), need: 'tick' }
+				{ name: 'Angle (yawRatio)', desc: 'How fast you turn compared with the best turn speed, mid-strafe. 1 = perfect, below = too slow, above = too fast.', tip: 'Median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out). 1 = optimal', v: (s) => n(s.angle, 2), need: 'tick' },
+				{ name: 'In optimal band', desc: 'Mid-strafe ticks where your turn speed is within 15 % of perfect. Higher = better.', tip: `Strafe-middle ticks at yawRatio ${BAND_LO}-${BAND_HI} (the yaw lane's band)`, v: (s) => n(s.inBand, 1, ' %'), need: 'tick' },
+				{ name: 'Too slow / too fast', desc: 'Mid-strafe ticks turning too slowly (under 85 %) / too quickly (over 115 %).', tip: `Strafe-middle ticks under ${BAND_LO} / over ${BAND_HI}`, v: (s) => `${n(s.tooSlow, 1)} / ${n(s.tooFast, 1)} %`, need: 'tick' },
+				{ name: 'Turn speed', desc: 'Your usual mid-strafe turn speed, in degrees per tick and mouse cm per second.', tip: 'Median turn speed of strafe middles (5-tick average), and in mouse terms when the DPI is set (a replay at your sens)', v: (s, r) => `${n(s.yawMid, 2, '°/t')}${cms(r, s.yawMid)}`, need: 'tick' },
+				{ name: 'Strafes per jump', desc: 'How many separate turns (one side each) you make per jump.', tip: 'Turns to one side per landed jump', v: (s) => n(s.strafesPerJump, 1), need: 'tick' },
+				{ name: 'Strafe length', desc: 'Usual length of one strafe (one turn to one side), in ticks.', tip: 'Median ticks of one strafe (one turn to one side)', v: (s) => n(s.strafeLen, 0, ' t'), need: 'tick' },
+				{ name: 'Air time turning', desc: 'Share of the air time you are actually turning. Not turning = gaining almost nothing.', tip: 'Strafing ticks with a turn of more than 0.3°/tick', v: (s) => n(s.turnPct, 1, ' %'), need: 'tick' },
+				{ name: '+left/+right ticks', desc: 'Ticks turned with the +left/+right keys (fixed speed), e.g. your prestrafe. Left out of the turning numbers.', tip: 'Strafing ticks with a turn button held (fixed cl_yawspeed turn, left out of the angle numbers)', v: (s) => String(s.btnTicks), need: 'tick' }
 			]
 		},
 		{
 			title: 'Swaps (strafe direction changes)',
 			rows: [
-				{ name: 'Swaps', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swapsTimed), need: 'tick' },
-				{ name: 'Swap time', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
-				{ name: 'Swap efficiency', tip: 'Median gain % of ideal over the 7 ticks centred on each reversal', v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
-				{ name: 'Lost at swaps', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
-				{ name: 'Peak after swap', tip: `Median of the fastest 2-tick turn in the 6 ticks after each reversal, vs optimal (100 % = optimal). +left/+right swaps not judged`, v: (s) => n(100 * s.peak, 0, ' %'), need: 'tick' },
-				{ name: 'Over / undershoot', tip: `Swaps whose peak is over ${BAND_HI * 100} % / under ${BAND_LO * 100} % of optimal, of the swaps judged`, v: (s) => `${s.over} / ${s.under} of ${s.judged}`, need: 'tick' },
-				{ name: 'Worst swap', tip: 'The swap with the most speed lost in its 7-tick window. (+left/right): a turn button was held, e.g. the prestrafe into jump 1', v: (s, r) => swapOf(r, s.worstSwap), click: (s) => s.worstSwap && zoomTo({ x0: cur.d.x[s.worstSwap.i] - 25, x1: cur.d.x[s.worstSwap.i] + 25 }), need: 'tick' }
+				{ name: 'Swaps', desc: 'Times you switch from turning one way to the other inside a jump.', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swapsTimed), need: 'tick' },
+				{ name: 'Swap time', desc: 'How long a switch takes: ticks from turning at full speed one way to full speed the other way. Shorter = better (top replays about 4).', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
+				{ name: 'Swap efficiency', desc: 'Gain % in the few ticks around a switch, like Gain % but only there. Low = you lose speed while changing direction (top replays about 99 %).', tip: 'Median gain % of ideal over the 7 ticks centred on each reversal', v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
+				{ name: 'Lost at swaps', desc: 'Speed lost in those few ticks around switches, and how much of all your lost speed that is.', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
+				{ name: 'Peak after swap', desc: 'How fast you turn just after a switch compared with perfect. 100 % = perfect; under = slow to get going, over = jerking too hard.', tip: `Median of the fastest 2-tick turn in the 6 ticks after each reversal, vs optimal (100 % = optimal). +left/+right swaps not judged`, v: (s) => n(100 * s.peak, 0, ' %'), need: 'tick' },
+				{ name: 'Over / undershoot', desc: 'Switches where you turn too hard right after (over 115 %) / too gently (under 85 %).', tip: `Swaps whose peak is over ${BAND_HI * 100} % / under ${BAND_LO * 100} % of optimal, of the swaps judged`, v: (s) => `${s.over} / ${s.under} of ${s.judged}`, need: 'tick' },
+				{ name: 'Worst swap', desc: 'The switch where you lost the most speed. Click to see it.', tip: 'The swap with the most speed lost in its 7-tick window. (+left/right): a turn button was held, e.g. the prestrafe into jump 1', v: (s, r) => swapOf(r, s.worstSwap), click: (s) => s.worstSwap && zoomTo({ x0: cur.d.x[s.worstSwap.i] - 25, x1: cur.d.x[s.worstSwap.i] + 25 }), need: 'tick' }
 			]
 		},
 		{
 			title: 'Keys',
 			rows: [
 				{
-					name: 'Sync (keys vs turn)',
+					name: 'Sync (keys vs turn)', desc: 'Share of turning ticks where the right strafe key (A or D alone) is held. Higher = better.',
 					tip: "Strafing ticks where A or D alone matches the turn side, keys shifted by the best lag. +left/+right ticks out. Not the game's sync number",
 					v: (s, r) => `${n(s.sync, 1, ' %')}${isOther(r.head) ? ' approx.' : ''}`,
 					need: 'tick'
 				},
-				{ name: 'Key lag', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
-				{ name: 'Switch vs reversal', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), need: 'keys' },
-				{ name: 'Switch on target', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), need: 'keys' },
+				{ name: 'Key lag', desc: 'How many ticks your keys come before your mouse turn. Your runs: about 1.', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
+				{ name: 'Switch vs reversal', desc: 'When you press the new key compared with when your mouse changes direction. Target -1 (one tick before).', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), need: 'keys' },
+				{ name: 'Switch on target', desc: 'Key switches 0-2 ticks before the mouse changes direction.', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), need: 'keys' },
 				{
-					name: 'Early / late',
+					name: 'Early / late', desc: 'Key switches too early / too late, by the Check settings thresholds (same as the Mistakes list).',
 					tip: `Switches ${sw.early}+ ticks before / ${sw.late}+ ticks after the reversal (the switch check's thresholds in Check settings)`,
 					v: (s) => `${s.swaps.filter((w) => w.keyOff !== null && w.keyOff <= -sw.early).length} / ${s.swaps.filter((w) => w.keyOff !== null && w.keyOff >= sw.late).length}`,
 					need: 'keys'
 				},
-				{ name: 'No key while turning', tip: 'Turning strafing ticks with neither or both of A and D (+left/+right ticks out)', v: (s) => n(s.noKeyPct, 1, ' %'), need: 'keys' },
-				{ name: 'W in the air', tip: 'Strafing ticks with W held', v: (s) => n(s.wAirPct, 1, ' %'), need: 'keys' }
+				{ name: 'No key while turning', desc: 'Turning ticks with no strafe key (or both). Those ticks gain nothing.', tip: 'Turning strafing ticks with neither or both of A and D (+left/+right ticks out)', v: (s) => n(s.noKeyPct, 1, ' %'), need: 'keys' },
+				{ name: 'W in the air', desc: 'Air ticks with W held. W while strafing usually costs gain.', tip: 'Strafing ticks with W held', v: (s) => n(s.wAirPct, 1, ' %'), need: 'keys' }
 			]
 		},
 		{
 			title: 'Mistakes',
 			rows: [
-				{ name: 'Found', tip: 'Mistake checks with the current settings (list below the path)', v: (s, r) => (r.mistakes ? String(r.mistakes.length) : '–'), need: 'tick', ghost: false },
-				{ name: 'Speed lost to them', v: (s, r) => (r.mistakes ? n(r.mistakes.reduce((a, m) => a + m.lost, 0), 1, ' u/s') : '–'), need: 'tick', ghost: false }
+				{ name: 'Found', desc: 'Mistakes found by the checks (listed below the path).', tip: 'Mistake checks with the current settings (list below the path)', v: (s, r) => (r.mistakes ? String(r.mistakes.length) : '–'), need: 'tick', ghost: false },
+				{ name: 'Speed lost to them', desc: 'Speed lost on the ticks of those mistakes.', v: (s, r) => (r.mistakes ? n(r.mistakes.reduce((a, m) => a + m.lost, 0), 1, ' u/s') : '–'), need: 'tick', ghost: false }
 			]
 		}
 	];
@@ -870,6 +870,12 @@ function showRunStats() {
 				el.append(g);
 			}
 			c.append(el);
+			if (row.desc) {
+				const ds = document.createElement('div');
+				ds.className = 'rs-desc';
+				ds.textContent = row.desc;
+				c.append(ds);
+			}
 		}
 		box.append(c);
 	}
