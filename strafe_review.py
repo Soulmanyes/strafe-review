@@ -57,20 +57,43 @@ def start_background():
     # a fresh PyInstaller instance with its own unpack folder; without this it would share this one's,
     # which is deleted when this copy exits after the game
     kw["env"] = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
-    if sys.platform == "win32":
-        kw["creationflags"] = (
-            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-        )
-    else:
+    if sys.platform != "win32":
         kw["start_new_session"] = True
-    subprocess.Popen([*me, SERVE], **kw)
+        subprocess.Popen([*me, SERVE], **kw)
+        return
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    try:
+        # out of Steam's job object, if it has one, so Steam doesn't count the server as part of the game
+        subprocess.Popen([*me, SERVE], creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
+    except OSError:  # the job doesn't allow breaking away
+        subprocess.Popen([*me, SERVE], creationflags=flags, **kw)
+
+
+def game_env():
+    """The environment for the game: PyInstaller's bootloader changes the library search path for its
+    own unpacked libraries, which the game must not load. Restored as PyInstaller's docs describe."""
+    if not getattr(sys, "frozen", False):
+        return None
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.kernel32.SetDllDirectoryW(None)
+        return None
+    env = dict(os.environ)
+    for key in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        orig = env.pop(key + "_ORIG", None)
+        if orig is not None:
+            env[key] = orig
+        else:
+            env.pop(key, None)
+    return env
 
 
 def launch(game_cmd):
     try_install()
     if not serving():
         start_background()
-    status = subprocess.call(game_cmd)
+    status = subprocess.call(game_cmd, env=game_env())
     if serving():
         webbrowser.open(URL)
     return status

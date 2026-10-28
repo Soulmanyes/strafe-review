@@ -33,7 +33,7 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 
 1. Unzip `strafe-review-windows.zip` from the release (built by `.github/workflows/windows.yml`; `python build.py` builds `dist/strafe-review.exe` with PyInstaller on a Windows PC).
 2. Double-click `strafe-review.exe`. It finds Momentum through Steam, installs or updates the recorder and the `autoexec.cfg` block (as `install.py` does), then collects and opens the review page. Keep its window open while playing; closing it stops collecting, and the next start picks up what was missed from `yaw.log`. A second double-click while it runs only opens the page.
-3. Or put it in Momentum Mod's Steam launch options instead: `"C:\path\to\strafe-review.exe" %command%`. It then starts the server in the background with the game and opens the page when the game quits.
+3. Or put it in Momentum Mod's Steam launch options instead: `"C:\path\to\strafe-review.exe" %command%`. It then starts the server in the background with the game and opens the page when the game quits. The server keeps running after that, without a window; end `strafe-review.exe` in Task Manager to stop it.
 4. Restart the game after the first start, so the `autoexec.cfg` block is read. Attempts are kept in `%LOCALAPPDATA%\strafe-review\attempts`.
 
 License: CC0 1.0 (see [LICENSE](LICENSE)).
