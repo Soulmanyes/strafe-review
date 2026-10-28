@@ -169,6 +169,19 @@ function shown(a) {
 	return ($('show-drills').checked || !isDrill(a)) && !isFragment(a) && passesFilters(a);
 }
 
+// Finish times only compare on one map: with Map on All, "Fastest finish" is greyed out and the list
+// sorts newest first. The saved choice comes back once a map is picked.
+function syncSort() {
+	const sel = $('f-sort');
+	const one = !!$('f-map').value;
+	const opt = [...sel.options].find((o) => o.value === 'finish');
+	opt.disabled = !one;
+	opt.textContent = one ? 'Fastest finish' : 'Fastest finish (pick a map)';
+	const want = localStorage.getItem(SORT_KEY) || 'newest';
+	sel.value = want === 'finish' && !one ? 'newest' : [...sel.options].some((o) => o.value === want) ? want : 'newest';
+	return sel.value;
+}
+
 // ---------- list ----------
 
 async function loadList() {
@@ -196,7 +209,7 @@ function renderList() {
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
 	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
 	const maps = [...new Set(visible.map((a) => a.dir))]; // newest attempt's map first, whatever the sort
-	const sorted = sortHeads(visible, $('f-sort').value);
+	const sorted = sortHeads(visible, syncSort());
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
