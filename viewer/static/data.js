@@ -18,13 +18,14 @@ function isOther(h) {
 }
 
 // Momentum's TrackType: 0 main, 1 stage, 2 bonus. Old files without a track are main.
-const TRACK_NAMES = ['Main', 'Stage', 'Bonus'];
+const TRACK_NAMES = ['', 's', 'b'];
 
-// The course a recording ran: the map folder for the main track, "<map> · Bonus 2" for others.
+// The course a recording ran: the map folder for the main track, "<map>: b2" for bonus 2, "<map>: s3"
+// for stage 3.
 // Attempts only compare on the same course (and tickrate).
 function course(h) {
 	const t = h.track || {};
-	return t.type ? `${h.dir} · ${TRACK_NAMES[t.type] || `Track ${t.type}`} ${t.number ?? ''}`.trimEnd() : h.dir;
+	return t.type ? `${h.dir}: ${TRACK_NAMES[t.type] || `t${t.type}-`}${t.number ?? ''}` : h.dir;
 }
 
 // Ticks per second as Momentum names it: 0.015 s is "66 tick", not 67
