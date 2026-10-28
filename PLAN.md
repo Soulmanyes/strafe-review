@@ -409,6 +409,19 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - The filters stack with "Show drills" and the replay-fragment rule. "N of M shown" also counts matching drills that the drill toggle hides.
   - The open attempt is always listed. On load, the first listed attempt opens.
 - **Checks:** server round trip on a scratch store (save, dedupe, 403 for text/plain, foreign Origin and foreign Host, 404, 413, clearing). Screenshot check with stubbed fetch and EventSource and a faked second style.
+- **Automatic tags** (`static/autotags.js`, owner's picks 2026-10-28). They are worked out in the page from the heads and never stored. Own attempts only.
+  - Shown as dashed chips with no ×. An auto-tag that the attempt also has as an own tag is shown only once, as the own one.
+  - They work in every tag filter.
+  - **new sens:** attempts at a sens never used before, for 24 h from the first one, until the sens changes again.
+    - A sens is sensitivity, m_yaw and Momentum's stored DPI. An attempt with no stored DPI keeps the one before it.
+    - The first stamped sens is the baseline and gets no tag.
+    - Attempts from before the recorder stamped `mouse` (2026-10-27) have no sens, so they get no sens tags.
+  - **old sens:** going back to a sens used before. Tagged for 24 h only if at least 75 attempts at other sens values came in between. A short trial and back gets nothing.
+    - The owner raised the noise problem and picked 75.
+    - The number is "Old sens after N attempts away" in the main page's check settings (localStorage `strafe-review-autotags`).
+  - **PB:** a finish faster than every earlier own finish on the same map, tickrate, style and track. Practice runs are skipped, and the first finish counts.
+  - Check: `node viewer/check_autotags.js` runs hand-made cases, then the tags the saved attempts get (189 attempts: 3 PBs on bhop_ambience, no sens stamped yet).
+- **Drill page tag filter:** a Tag select in the bar holds own and automatic tags of own attempts on the picked map. Only attempts with the tag are counted, and the "Latest session" scope is applied after the filter. Replays are not filtered. The choice is kept in localStorage `strafe-review-drill-tag`. Bulk tagging was offered and not wanted.
 
 ## Later / undecided
 

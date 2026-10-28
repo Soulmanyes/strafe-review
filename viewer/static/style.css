@@ -155,6 +155,7 @@ h1 { font-size: 17px; margin: 0; }
 .chip.drill { color: #c792ea; border-color: #c792ea; background: #c792ea22; }
 .chip.ghost { color: var(--ghost); border-color: var(--ghost); background: #ff79c622; font-weight: 500; }
 .chip.tag { color: #82aaff; border-color: #82aaff; background: #82aaff22; font-weight: 500; }
+.chip.tag.auto { border-style: dashed; background: none; }
 .chip.finish { color: var(--own); border-color: var(--own); }
 
 #main {
@@ -242,6 +243,7 @@ h2 { font-size: 15px; margin: 0; }
 .ck .help { color: var(--muted); font-size: 12px; margin: 3px 0 6px 24px; }
 .ck .param { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 0 0 24px; font-size: 13px; }
 #dpi,
+#auto-old,
 .ck .param input {
 	width: 80px;
 	background: var(--bg);

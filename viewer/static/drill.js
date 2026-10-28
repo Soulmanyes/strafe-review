@@ -30,6 +30,7 @@ const AXIS_H = 26;
 const $ = (id) => document.getElementById(id);
 let list = []; // attempt headers from /api/attempts
 const cache = new Map(); // "dir/id" -> entry (parsed jump 1), or null when it has none
+const TAG_KEY = 'strafe-review-drill-tag';
 let followLatest = true; // the map picker follows the newest attempt until it's changed by hand
 let shown = { own: [], replays: [] }; // entries on the page now
 let fresh = new Set(); // keys that arrived live, flashed once
@@ -191,7 +192,10 @@ function maps() {
 // Own attempts on the picked map, either the latest session or all, oldest first
 function pick() {
 	const mk = $('map').value;
-	const own = list.filter((h) => mapKey(h) === mk && h.label !== 'replay').sort((a, b) => a.started - b.started);
+	const tag = $('tag').value;
+	const own = list
+		.filter((h) => mapKey(h) === mk && h.label !== 'replay' && (!tag || allTags(h).includes(tag)))
+		.sort((a, b) => a.started - b.started);
 	// A replay that starts over is recorded again (a few ticks before it was stopped): keep the
 	// longest recording of each replay file
 	const byFile = new Map();
@@ -221,6 +225,19 @@ async function loadList() {
 	// follow the newest attempt's map unless one was picked by hand
 	if (!followLatest && ms.has(old)) sel.value = old;
 	else if (ms.size) sel.value = ms.keys().next().value;
+	autoTags(list);
+	fillTags();
+}
+
+// Tags (own and automatic) of own attempts on the picked map. A picked tag the map doesn't have shows as All.
+function fillTags() {
+	const sel = $('tag');
+	const want = sel.value || localStorage.getItem(TAG_KEY) || '';
+	const mk = $('map').value;
+	const tags = [...new Set(list.filter((h) => mapKey(h) === mk && h.label !== 'replay').flatMap(allTags))].sort((a, b) => a.localeCompare(b));
+	sel.replaceChildren(new Option('All', ''), ...tags.map((t) => new Option(t, t)));
+	sel.value = tags.includes(want) ? want : '';
+	sel.disabled = !tags.length;
 }
 
 async function render() {
@@ -1064,6 +1081,11 @@ $('stack').addEventListener('click', (ev) => {
 });
 $('map').onchange = () => {
 	followLatest = false;
+	fillTags();
+	render();
+};
+$('tag').onchange = () => {
+	localStorage.setItem(TAG_KEY, $('tag').value);
 	render();
 };
 $('scope').onchange = render;

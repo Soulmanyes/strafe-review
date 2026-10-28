@@ -56,6 +56,7 @@
 				<span class="muted">Saved in this browser. Only changed values are kept, so new defaults still arrive.</span>
 				<label class="cmp" title="Your mouse DPI, for turning degrees into centimetres of mouse movement (shared with the drill page)">Mouse DPI <input id="dpi" type="number" min="100" max="64000" step="50" placeholder="e.g. 800"></label>
 				<span id="cm360" class="hint"></span>
+				<label class="cmp" title="Going back to a sens used before is tagged &quot;old sens&quot; (for 24 h) only after this many attempts at other sens values">Old sens after <input id="auto-old" type="number" min="0" max="10000" step="5"> attempts away</label>
 				<button id="reset-checks">Reset all to defaults</button>
 				<button id="close-checks" title="Close (Esc)">Close</button>
 			</div>
@@ -75,6 +76,7 @@
 <script src="/static/data.js"></script>
 <script src="/static/checks.js"></script>
 <script src="/static/mouse.js"></script>
+<script src="/static/autotags.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

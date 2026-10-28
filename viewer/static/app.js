@@ -124,7 +124,7 @@ const FILTERS = [
 	['tick', 'f-tick', (a) => String(Math.round(1 / a.interval)), (v) => `${v} tick`],
 	['style', 'f-style', (a) => String(a.style ?? 0), (v) => STYLES[v] || `style ${v}`],
 	['result', 'f-result', (a) => (a.reason === 'finish' ? 'finish' : 'other'), (v) => RESULTS[v]],
-	['tag', 'f-tag', (a) => a.tags || [], (v) => v]
+	['tag', 'f-tag', allTags, (v) => v]
 ];
 
 function loadFilters() {
@@ -174,6 +174,7 @@ function shown(a) {
 async function loadList() {
 	list = await (await fetch('/api/attempts')).json();
 	applyWanted(); // edits still on their way to the server
+	autoTags(list);
 	fillFilters();
 	fillTagList();
 	renderList();
@@ -221,9 +222,10 @@ function renderList() {
 			const t = a.runTime ? `${a.runTime.toFixed(2)} s` : '';
 			r2.textContent = [when(a.started), t, `${a.runGaps ?? a.gaps} missed`].filter(Boolean).join(' · ');
 			b.append(r1, r2);
-			if (a.tags?.length || a.note) {
+			if (a.tags?.length || a.auto?.length || a.note) {
 				const r3 = document.createElement('div');
 				r3.className = 'row3';
+				for (const t of autoOnly(a)) r3.append(autoChip(t));
 				for (const t of a.tags || []) {
 					const c = document.createElement('span');
 					c.className = 'chip tag';
@@ -262,6 +264,17 @@ function fillTagList() {
 	$('tag-list').replaceChildren(...tags.map((t) => new Option(t)));
 }
 
+// Automatic tags the attempt doesn't also have as an own tag (that one shows, with its ×)
+const autoOnly = (a) => (a.auto || []).filter((t) => !(a.tags || []).some((o) => o.toLowerCase() === t.toLowerCase()));
+
+function autoChip(t) {
+	const c = document.createElement('span');
+	c.className = 'chip tag auto';
+	c.textContent = t;
+	c.title = 'Automatic tag, worked out from the recordings';
+	return c;
+}
+
 // The editor sits outside #head, so a list refresh (a new attempt saved) never wipes what is being typed
 function showMeta() {
 	const e = listEntry();
@@ -269,7 +282,7 @@ function showMeta() {
 	if (!cur) return;
 	const tags = e?.tags || [];
 	const box = $('tags');
-	box.replaceChildren();
+	box.replaceChildren(...(e ? autoOnly(e) : []).map(autoChip));
 	for (const t of tags) {
 		const c = document.createElement('span');
 		c.className = 'chip tag';
@@ -1295,6 +1308,16 @@ function showCm360() {
 	$('cm360').textContent = m ? `${(360 * m.cmPerDeg).toFixed(1)} cm/360° at sens ${m.sens}` : '';
 }
 
+$('auto-old').value = loadAutoOpts().oldMin;
+$('auto-old').onchange = () => {
+	const v = Number.parseInt($('auto-old').value, 10);
+	saveAutoOpts({ oldMin: Number.isInteger(v) && v >= 0 ? v : AUTO_OLD_MIN });
+	$('auto-old').value = loadAutoOpts().oldMin;
+	autoTags(list);
+	fillFilters();
+	renderList();
+	showMeta();
+};
 $('dpi').onchange = () => {
 	dpi = Number.parseFloat($('dpi').value);
 	saveDpi(dpi);

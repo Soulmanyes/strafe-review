@@ -15,6 +15,7 @@
 		<option value="session">Latest session</option>
 		<option value="all">All on this map</option>
 	</select></label>
+	<label title="Only attempts with this tag (your own or an automatic one: new sens, old sens, PB)">Tag <select id="tag"></select></label>
 	<label title="Your mouse DPI, for turning degrees into centimetres of mouse movement">Mouse DPI <input id="dpi" type="number" min="100" max="64000" step="50" placeholder="e.g. 800"></label>
 	<span id="cm360" class="hint"></span>
 	<span id="live" class="live off" title="The page updates by itself the moment an attempt is saved">Live</span>
@@ -54,6 +55,7 @@
 <script src="/static/data.js"></script>
 <script src="/static/checks.js"></script>
 <script src="/static/mouse.js"></script>
+<script src="/static/autotags.js"></script>
 <script src="/static/drill.js"></script>
 </body>
 </html>
