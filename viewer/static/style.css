@@ -234,7 +234,7 @@ h2 { font-size: 15px; margin: 0; }
 .mk .name { font-weight: 600; }
 
 .path-dist { font: 600 13px ui-monospace, monospace; }
-#path-box { position: relative; height: 360px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
+#path-box { position: relative; height: 720px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
 #path-box canvas { position: absolute; left: 0; top: 0; }
 #path-over { cursor: crosshair; }
 
