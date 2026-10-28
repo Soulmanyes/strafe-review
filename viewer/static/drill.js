@@ -948,7 +948,8 @@ function drawFocus() {
 				const y2 = l.Y(sgn * o * 1.15);
 				g.fillRect(X(f.xs[i] - 0.5), Math.min(y1, y2), X(1) - X(0) + 0.5, Math.abs(y2 - y1));
 			}
-			polyline(g, f.xs, f.opt.map((o, i) => (f.want[i] ? f.want[i] * o : NaN)), X, l.Y, '#7bd88f', 1);
+			// one line per side, so a strafe change is a gap, not a slope from +opt to -opt
+			for (const side of [1, -1]) polyline(g, f.xs, f.opt.map((o, i) => (f.want[i] === side ? side * o : NaN)), X, l.Y, '#7bd88f', 1);
 			polyline(g, f.xs, f.turn, X, l.Y, '#c792ea', 2.2);
 		} else if (l.id === 'keys') {
 			const rowH = (l.h - 12) / 2;
