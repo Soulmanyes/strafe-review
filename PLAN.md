@@ -93,6 +93,7 @@ A HUD that only reads and displays data is normal in Momentum; HUD customisation
   - Labels: `replay` when `GetReplayState()` is not NONE or `GetObservedRunMetadata()` is set (with player name and replay file), else `own`. `practice` is stored too.
   - `spectate` (added 2026-10-28): a live player being spectated. Before this label existed, these were saved as `own` with every tick stat 0 (3 bhop_glacial attempts). The recorder sets it when it isn't a replay and either `MomentumSpectateStart` came without a `MomentumSpectateStop` or `GetMoveType()` is OBSERVER (10), which covers a `panorama_reload` mid-spectate. `player` comes from the built-in `#Spectator` HUD panel's `name`. The in-game line is off for these. Live check passed 2026-10-28 (label and name stored).
   - Old files: the server's `head()` and `parse()` in `static/data.js` relabel an `own` attempt as `spectate` when it has 20+ air rows and none of them has a non-zero `ideal`. The files themselves are not rewritten. In the viewer, `isOther(h)` (anything not `own`) replaces the old `label === 'replay'` tests: other players' recordings are kept out of own stats, PBs, the drill and the takeoff median, and they skip the key-timing checks like replays. `whoseRun(h)` gives "Replay: name", "Spectated: name" or "Own run".
+  - **Coarse speed (2026-10-28):** a spectated live player's velocity only changes about every 5th tick (network updates; 214 of 1073 air rows on one run), so the gain rebuilt from speed is 0 on most ticks and the whole change on one. `parse()` sets `d.coarse` when the recording has no tick stats and velocity changes on fewer than half its air rows (all 8 such recordings on disk are spectated, no own runs or replays). Owner's pick: per-jump % only. The gain lane shows a note instead of the line, the checks are off, the readout says "per jump only", and the path is coloured by the jump's %. In coarse rows a drop of more than 100 u/s in one row (the finish wall, 963 to 61 u/s) is left out of the jump's %, which had read -515 %.
 - **Wire format 1.** Every line is `[panorama] SRREC <id> ...`:
   - `<id> <i>/<n> <text>`: chunk i of n, at most 900 characters. The chunks joined in order are one JSON object.
   - `<id> end n=<n> chars=<c>`: last line; an attempt with missing chunks is dropped.
@@ -381,6 +382,15 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Top-down path:** a small view of the path from above, coloured by gain. Clicking a point jumps to that tick.
   - The path is built up from velocity and resets on teleport.
   - The shape is right but not exact down to the unit, which is accepted.
+
+#### Top-down path v1 (2026-10-28)
+
+- **Place:** its own section under the graph (after Missed ticks and the tick axis), above Mistakes (owner's pick).
+- **Position:** `buildPath()` in `static/data.js`. Velocity times the tick interval, a row after missed ticks counts for all of them. The timer start is (0, 0) and the rows before it are worked out backwards. A teleport (speed 100+ to standstill or back in one tick, the same rule as `findJumps()`) breaks the line; after it the path restarts at (0, 0), and rows before the last teleport ahead of the timer start (a replay's previous run) get no position.
+- **Drawing:** fits the ticks shown in the graph and dims the rest; a "Whole path" toggle (localStorage) fits everything. Colour = gain % of ideal over 5 ticks, same scale as the drill page and in-game line (red 60 %, green 95 %), grey on the ground. Takeoff dots with jump numbers (up to 40 shown), rings for the timer start and the run end, a scale bar in units. The picked mistake is outlined in red on the path too.
+- **Linking:** hovering the graph puts a dot (with a short line in the view direction) on the path; hovering the path moves the graph cursor and readout; clicking the path zooms the graph to that jump, or centres it on that tick when it's on the ground.
+- **Check:** `node viewer/check_path.js [--list]`: the timer start is at (0, 0) and every row after it has a position (227 attempts, 0 bad). The 5 own bhop_ambience finishes end within 171 units of their mean, so the integration doesn't drift much.
+- **Not done:** the ghost on the path (start positions in the start zone differ, so it would need lining up).
 
 ### Organising
 

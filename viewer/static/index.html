@@ -68,6 +68,18 @@
 		<canvas id="base"></canvas>
 		<canvas id="over"></canvas>
 	</div>
+	<section id="path-sec">
+		<div class="sec-head">
+			<h2>Path from above</h2>
+			<span class="muted">Built up from speed, so the shape is right but not exact. Fits the ticks shown in the graph; the rest is dimmed.</span>
+			<label class="cmp" title="Fit the whole path instead of the ticks shown in the graph"><input type="checkbox" id="path-whole"> Whole path</label>
+			<span class="hint">Colour: gain % of ideal (5-tick), red 60 % and under, green 95 % and over; grey = ground · hover: graph cursor · click: zoom to that jump</span>
+		</div>
+		<div id="path-box">
+			<canvas id="path-base"></canvas>
+			<canvas id="path-over"></canvas>
+		</div>
+	</section>
 	<section id="mistakes">
 		<div class="sec-head"><h2>Mistakes</h2><span id="mistakes-sum" class="muted"></span></div>
 		<div id="mistakes-list"></div>

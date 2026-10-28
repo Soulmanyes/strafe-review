@@ -57,11 +57,22 @@ function parse(a) {
 	d.derived = !d.ideal.some((v, i) => v !== 0 && !d.ground[i]);
 	// Recorders before the 'spectate' label saved a spectated live player as 'own' (same rule as the server's head())
 	if (d.derived && a.label === 'own' && d.ground.reduce((c, g) => c + (g ? 0 : 1), 0) >= SPECTATE_MIN_AIR) a.label = 'spectate';
+	// A spectated live player's velocity only changes on every 5th tick or so (network updates), so the
+	// rebuilt gain is 0 on most ticks and the whole change on one: only per-jump sums mean anything.
+	let airRows = 0;
+	let changed = 0;
+	for (let i = 1; i < n; i++) {
+		if (d.ground[i] || d.gap[i] > 0) continue;
+		airRows++;
+		if (d.vx[i] !== d.vx[i - 1] || d.vy[i] !== d.vy[i - 1]) changed++;
+	}
+	d.coarse = d.derived && airRows >= SPECTATE_MIN_AIR && changed < airRows / 2;
 	if (d.derived) {
 		for (let i = 0; i < n; i++) {
 			const v = i > 0 ? d.speed[i - 1] : NaN;
-			// a rise of more than one tick's air add is a teleport, not strafing (replays open with a teleport-in)
-			const ok = i > 0 && d.gap[i] === 0 && !d.ground[i] && d.speed[i] - v <= AIR_ADD;
+			// a rise of more than one tick's air add is a teleport, not strafing (replays open with a teleport-in);
+			// in coarse rows a drop of over 100 u/s in one row is a wall hit (the finish wall), left out of the jump's %
+			const ok = i > 0 && d.gap[i] === 0 && !d.ground[i] && d.speed[i] - v <= AIR_ADD && !(d.coarse && d.speed[i] - v < -100);
 			d.gain[i] = ok ? d.speed[i] - v : NaN;
 			d.ideal[i] = ok ? Math.sqrt(v * v + AIR_ADD * AIR_ADD) - v : NaN;
 		}
@@ -212,4 +223,48 @@ function runEnd(a, d) {
 	return last;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest };
+// Top-down path: no position API, so the position is built up from velocity times the tick interval
+// (a row after missed ticks counts for all of them). The timer start is (0, 0). A teleport (speed from
+// 100+ to standstill or back in one tick) breaks the line: after it the path starts again at (0, 0), and
+// rows before the last teleport ahead of the timer start (a replay's previous run) get no position.
+// Returns { x, y, brk }: world x and y in units (NaN = no position), brk[i] = 1 when row i isn't joined
+// to row i - 1.
+function buildPath(d, interval, preRows) {
+	const n = d.n;
+	const x = new Float64Array(n).fill(NaN);
+	const y = new Float64Array(n).fill(NaN);
+	const brk = new Uint8Array(n);
+	if (!n) return { x, y, brk };
+	const p = Math.min(preRows || 0, n - 1);
+	const tp = (i) => {
+		if (d.gap[i] > 0) return false;
+		const a = d.speed[i - 1];
+		const b = d.speed[i];
+		return (a > 100 && b < 1) || (a < 1 && b > 100);
+	};
+	const step = (i) => interval * (d.gap[i] + 1);
+	x[p] = 0;
+	y[p] = 0;
+	brk[p] = 1;
+	for (let i = p + 1; i < n; i++) {
+		if (tp(i)) {
+			x[i] = 0;
+			y[i] = 0;
+			brk[i] = 1;
+			continue;
+		}
+		x[i] = x[i - 1] + d.vx[i] * step(i);
+		y[i] = y[i - 1] + d.vy[i] * step(i);
+	}
+	// backwards from the timer start: row i - 1 = row i minus row i's move
+	for (let i = p; i > 0; i--) {
+		if (tp(i)) break;
+		x[i - 1] = x[i] - d.vx[i] * step(i);
+		y[i - 1] = y[i] - d.vy[i] * step(i);
+		brk[i] = 0;
+		brk[i - 1] = 1;
+	}
+	return { x, y, brk };
+}
+
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath };

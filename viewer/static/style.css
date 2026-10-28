@@ -233,6 +233,10 @@ h2 { font-size: 15px; margin: 0; }
 .mk .lost.zero { color: var(--muted); font-weight: 400; }
 .mk .name { font-weight: 600; }
 
+#path-box { position: relative; height: 360px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
+#path-box canvas { position: absolute; left: 0; top: 0; }
+#path-over { cursor: crosshair; }
+
 #mistakes-list { max-height: 360px; overflow-y: auto; padding-right: 4px; }
 
 #settings-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }

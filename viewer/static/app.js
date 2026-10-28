@@ -65,6 +65,7 @@ let gutterText = []; // [text, y]: drawn after the lane clip is lifted
 let selMistake = null; // the mistake picked in the list, outlined on the graph
 let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for attempts that didn't record theirs
 let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
+let pathFit = null; // { s, ox, oy, r0, r1 }: how the last path drawing maps world units to pixels
 let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how }: the comparison drawn dashed pink
 const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps }
 const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
@@ -76,6 +77,7 @@ const FILTERS_KEY = 'strafe-review-filters'; // { map, tick, style, result, tag 
 const STYLES = ['Normal', 'Half-Sideways (bhop)', 'Half-Sideways (surf)', 'Sideways', 'W-Only', 'A/D-Only', 'S-Only', 'Backwards', 'Pro', 'Teleport'];
 const RESULTS = { finish: 'Finished', other: 'Not finished' };
 const YAW_SIGNED_KEY = 'strafe-review-yaw-signed';
+const PATH_WHOLE_KEY = 'strafe-review-path-whole';
 const YAW_SUB = { size: '°/tick vs optimal', signed: '°/tick, + left, - right' };
 // A drill: an own attempt that didn't finish and landed this many jumps or fewer (jump 1 or SSJ practice)
 const DRILL_MAX_JUMPS = 7;
@@ -385,6 +387,7 @@ async function open(dir, id) {
 	const d = parse(a);
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: a.postRows ? d.n - 1 - a.postRows : d.n - 1 };
+	cur.path = { ...buildPath(d, a.interval, a.preRows), pct: pathPct(d, jumps) };
 	location.hash = `${dir}/${id}`;
 	showCm360();
 	hoverIdx = -1;
@@ -549,7 +552,8 @@ function takeoffBaseline(h) {
 
 function findMistakes() {
 	if (!cur) return;
-	cur.mistakes = runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head), isOther(cur.head));
+	// a spectated live player's per-tick speed is too coarse for the checks (see parse())
+	cur.mistakes = cur.d.coarse ? [] : runChecks(cur.d, cur.jumps, cur.endIdx, loadSettings(), takeoffBaseline(cur.head), isOther(cur.head));
 	if (selMistake && !cur.mistakes.some((m) => m.check === selMistake.check && m.i0 === selMistake.i0)) selMistake = null;
 	showMistakes();
 }
@@ -560,6 +564,10 @@ function showMistakes() {
 	const ms = cur ? cur.mistakes : [];
 	const total = ms.reduce((t, m) => t + m.lost, 0);
 	const skipped = cur && isOther(cur.head) ? " · key timing checks are skipped for other players' recordings (replay keys run ahead of the turn)" : '';
+	if (cur && cur.d.coarse) {
+		$('mistakes-sum').textContent = "Checks off: a spectated live player's speed only updates every few ticks, too coarse to judge ticks.";
+		return;
+	}
 	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all${skipped}` : '';
 	if (cur && !ms.length) box.textContent = 'No mistakes found with the current settings.';
 	for (const m of ms) {
@@ -661,7 +669,8 @@ function showHead() {
 		n.textContent = text;
 		el.append(n);
 	};
-	if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
+	if (cur.d.coarse) note('replay', 'Speed updates every few ticks (spectated live): gain per jump only, checks off');
+	else if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
 	$('align-hint').hidden = !ghost; // only says something when there is a ghost to line up
 	if (ghost) {
 		const gh = ghost.head;
@@ -756,6 +765,7 @@ function draw() {
 	const g = size(base, W, H);
 	size(over, W, H);
 	g.font = '12px system-ui, sans-serif';
+	drawPath();
 	if (!cur) return;
 	const d = cur.d;
 	const i0 = Math.max(0, nearest(view.x0) - 1);
@@ -1009,6 +1019,11 @@ const LANE_DRAW = {
 	},
 
 	gain(g, l, d, i0, i1) {
+		if (d.coarse) {
+			g.fillStyle = COL.muted;
+			g.fillText('Per-tick gain hidden: a spectated live player\'s speed only updates every few ticks. Per-jump % is in the Jumps lane.', GUTTER + 8, l.y + l.h / 2);
+			return;
+		}
 		const isAir = air(d);
 		const ok = strafingRows(d);
 		const hi = Math.max(0.1, quantile(d, 0, d.n - 1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
@@ -1023,7 +1038,7 @@ const LANE_DRAW = {
 			g.fillRect(X0, Y(d.ideal[i]), Math.max(px(d.x[i] + 0.5) - X0, 1), Y(d.gain[i]) - Y(d.ideal[i]));
 		}
 		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.opt, 1.5, isAir);
-		ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
+		if (!ghost?.gd.coarse) ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
 		line(g, d, i0, i1, (i) => d.gain[i], Y, COL.line, 2, isAir);
 		yLabels(l, Y, lo < 0 ? [lo, 0, hi] : [0, hi / 2, hi], (v) => v.toFixed(2));
 	},
@@ -1096,6 +1111,7 @@ const LANE_DRAW = {
 };
 
 function drawHover() {
+	drawPathHover();
 	const g = over.getContext('2d');
 	const r = window.devicePixelRatio || 1;
 	g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1144,7 +1160,7 @@ function drawHover() {
 		['tick', `${d.x[i]} (${(d.x[i] / cur.tps).toFixed(2)} s)`],
 		['where', d.ground[i] ? 'ground' : j ? (j.num ? `jump ${j.num}` : 'pre-jump') : 'air'],
 		['speed', f(d.speed[i], 1)],
-		['gain', `${f(d.gain[i], 3)} / ${f(d.ideal[i], 3)}`],
+		['gain', d.coarse ? 'per jump only' : `${f(d.gain[i], 3)} / ${f(d.ideal[i], 3)}`],
 		['yaw', `${f(d.yawd[i], 2)}° (avg ${f(d.yaws[i], 2)}, opt ${f(d.opt[i], 2)})`],
 		...mouseField(i),
 		['ratio', f(d.ratio[i], 3)],
@@ -1166,6 +1182,239 @@ function drawHover() {
 	}
 	$('readout').innerHTML = fields.map(([k, v]) => `<span><span class="k">${k}</span> ${v}</span>`).join('');
 }
+
+// ---------- top-down path ----------
+
+// Gain % of ideal over 5 ticks around each air row, for the path colour (NaN on the ground). A coarse
+// recording (spectated live, see parse()) gets its jump's % on every air row instead.
+function pathPct(d, jumps) {
+	const pct = new Float64Array(d.n).fill(NaN);
+	if (d.coarse) {
+		for (const j of jumps) for (let i = j.s; i < j.e; i++) if (!d.ground[i]) pct[i] = j.pct;
+		return pct;
+	}
+	for (let i = 0; i < d.n; i++) {
+		if (d.ground[i]) continue;
+		let g = 0;
+		let id = 0;
+		for (let j = Math.max(0, i - 2); j <= Math.min(d.n - 1, i + 2); j++) {
+			if (d.ground[j] || !Number.isFinite(d.gain[j]) || !Number.isFinite(d.ideal[j])) continue;
+			g += d.gain[j];
+			id += d.ideal[j];
+		}
+		if (id > 0) pct[i] = (100 * g) / id;
+	}
+	return pct;
+}
+
+// Same scale as the drill page and the in-game line: red at 60 % and under, green at 95 % and over
+function gainColor(p) {
+	if (!Number.isFinite(p)) return '#8c8c96';
+	const t = Math.max(0, Math.min(1, (p - 60) / 35));
+	const mix = (a, b) => Math.round(a + (b - a) * t);
+	return `rgb(${mix(0xff, 0x7b)},${mix(0x5c, 0xd8)},${mix(0x5c, 0x8f)})`;
+}
+
+// Rows the path fits: the ticks shown in the graph, or all of them with "Whole path"
+function pathRange() {
+	const d = cur.d;
+	if ($('path-whole').checked) return [0, d.n - 1];
+	return [Math.max(0, nearest(view.x0)), Math.min(d.n - 1, nearest(view.x1))];
+}
+
+function drawPath() {
+	const box = $('path-box');
+	const W = box.clientWidth;
+	const H = box.clientHeight;
+	const g = size($('path-base'), W, H);
+	size($('path-over'), W, H);
+	pathFit = null;
+	g.font = '12px system-ui, sans-serif';
+	g.fillStyle = COL.muted;
+	if (!cur) {
+		g.fillText('Pick an attempt on the left.', 12, 22);
+		return;
+	}
+	const d = cur.d;
+	const { x, y, brk, pct } = cur.path;
+	const [r0, r1] = pathRange();
+	let x0 = Infinity;
+	let x1 = -Infinity;
+	let y0 = Infinity;
+	let y1 = -Infinity;
+	for (let i = r0; i <= r1; i++) {
+		if (!Number.isFinite(x[i])) continue;
+		x0 = Math.min(x0, x[i]);
+		x1 = Math.max(x1, x[i]);
+		y0 = Math.min(y0, y[i]);
+		y1 = Math.max(y1, y[i]);
+	}
+	if (!Number.isFinite(x0)) {
+		g.fillText('No path for these ticks.', 12, 22);
+		return;
+	}
+	const PAD = 24;
+	// world y points up, so it is flipped on the canvas; at least 64 units across, so a standstill doesn't blow up
+	const s = Math.min((W - 2 * PAD) / Math.max(x1 - x0, 64), (H - 2 * PAD) / Math.max(y1 - y0, 64));
+	const ox = W / 2 - ((x0 + x1) / 2) * s;
+	const oy = H / 2 + ((y0 + y1) / 2) * s;
+	pathFit = { s, ox, oy, r0, r1 };
+	const X = (i) => ox + x[i] * s;
+	const Y = (i) => oy - y[i] * s;
+	// one stroke per run of rows with the same colour; rows outside the graph's ticks are dimmed
+	g.lineCap = 'round';
+	g.lineJoin = 'round';
+	let run = null;
+	const flush = () => {
+		if (!run) return;
+		g.strokeStyle = run.col;
+		g.globalAlpha = run.dim ? 0.22 : 1;
+		g.lineWidth = run.dim ? 2 : 3;
+		g.stroke();
+		run = null;
+	};
+	for (let i = 1; i < d.n; i++) {
+		if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1])) {
+			flush();
+			continue;
+		}
+		const col = d.ground[i] ? COL.muted : gainColor(pct[i]);
+		const dim = i < r0 || i > r1;
+		if (!run || run.col !== col || run.dim !== dim) {
+			flush();
+			run = { col, dim };
+			g.beginPath();
+			g.moveTo(X(i - 1), Y(i - 1));
+		}
+		g.lineTo(X(i), Y(i));
+	}
+	flush();
+	g.globalAlpha = 1;
+	// takeoff of each numbered jump, with its number when there's room
+	const shown = cur.jumps.filter((j) => j.num && j.s >= r0 && j.s <= r1 && Number.isFinite(x[j.s]));
+	g.font = '600 11px system-ui, sans-serif';
+	for (const j of shown) {
+		g.fillStyle = COL.text;
+		g.beginPath();
+		g.arc(X(j.s), Y(j.s), 3, 0, 2 * Math.PI);
+		g.fill();
+		if (shown.length <= 40) g.fillText(String(j.num), X(j.s) + 5, Y(j.s) - 5);
+	}
+	// timer start and run end
+	const ring = (i, col, text) => {
+		if (i < r0 || i > r1 || !Number.isFinite(x[i])) return;
+		g.strokeStyle = col;
+		g.lineWidth = 2;
+		g.beginPath();
+		g.arc(X(i), Y(i), 6, 0, 2 * Math.PI);
+		g.stroke();
+		g.fillStyle = col;
+		g.fillText(text, X(i) + 9, Y(i) + 14);
+	};
+	ring(Math.min(cur.head.preRows || 0, d.n - 1), COL.opt, 'timer start');
+	ring(cur.endIdx, COL.bad, cur.head.reason === 'finish' ? 'finish' : 'end');
+	// scale bar
+	const unit = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find((u) => u * s >= 60) || 10000;
+	g.strokeStyle = COL.text;
+	g.lineWidth = 2;
+	g.beginPath();
+	g.moveTo(12, H - 12);
+	g.lineTo(12 + unit * s, H - 12);
+	g.stroke();
+	g.fillStyle = COL.muted;
+	g.font = '11px system-ui, sans-serif';
+	g.fillText(`${unit} units`, 12, H - 18);
+}
+
+// Hover dot with the view direction, and the picked mistake's rows
+function drawPathHover() {
+	const cv = $('path-over');
+	const g = cv.getContext('2d');
+	const r = window.devicePixelRatio || 1;
+	g.setTransform(1, 0, 0, 1, 0, 0);
+	g.clearRect(0, 0, cv.width, cv.height);
+	g.setTransform(r, 0, 0, r, 0, 0);
+	if (!cur || !pathFit) return;
+	const { x, y, brk } = cur.path;
+	const { s, ox, oy } = pathFit;
+	const X = (i) => ox + x[i] * s;
+	const Y = (i) => oy - y[i] * s;
+	if (selMistake) {
+		g.strokeStyle = '#ff5c5caa';
+		g.lineWidth = 8;
+		g.lineCap = 'round';
+		g.beginPath();
+		for (let i = selMistake.i0; i <= selMistake.i1; i++) {
+			if (!Number.isFinite(x[i])) continue;
+			if (i === selMistake.i0 || brk[i] || !Number.isFinite(x[i - 1])) g.moveTo(X(i), Y(i));
+			else g.lineTo(X(i), Y(i));
+		}
+		g.stroke();
+	}
+	const i = hoverIdx;
+	if (i < 0 || !Number.isFinite(x[i])) return;
+	const a = (cur.d.yaw[i] * Math.PI) / 180;
+	g.strokeStyle = COL.hover;
+	g.lineWidth = 2;
+	g.beginPath();
+	g.moveTo(X(i), Y(i));
+	g.lineTo(X(i) + Math.cos(a) * 22, Y(i) - Math.sin(a) * 22);
+	g.stroke();
+	g.fillStyle = COL.hover;
+	g.beginPath();
+	g.arc(X(i), Y(i), 5, 0, 2 * Math.PI);
+	g.fill();
+}
+
+// Nearest row to a point on the path canvas, among the rows it fits, within 14 px
+function pathRowAt(mx, my) {
+	if (!cur || !pathFit) return -1;
+	const { x, y } = cur.path;
+	const { s, ox, oy, r0, r1 } = pathFit;
+	let best = -1;
+	let bd = 14 * 14;
+	for (let i = r0; i <= r1; i++) {
+		if (!Number.isFinite(x[i])) continue;
+		const dx = ox + x[i] * s - mx;
+		const dy = oy - y[i] * s - my;
+		if (dx * dx + dy * dy < bd) {
+			bd = dx * dx + dy * dy;
+			best = i;
+		}
+	}
+	return best;
+}
+
+$('path-over').addEventListener('mousemove', (e) => {
+	const rect = e.currentTarget.getBoundingClientRect();
+	hoverIdx = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
+	drawHover();
+});
+$('path-over').addEventListener('mouseleave', () => {
+	hoverIdx = -1;
+	drawHover();
+});
+// Click: zoom the graph to that jump, or centre it on that tick when it's on the ground
+$('path-over').addEventListener('click', (e) => {
+	const rect = e.currentTarget.getBoundingClientRect();
+	const i = pathRowAt(e.clientX - rect.left, e.clientY - rect.top);
+	if (i < 0) return;
+	const j = cur.jumps.find((jj) => i >= jj.s && i < jj.e);
+	if (j) zoomTo(j);
+	else {
+		const span = view.x1 - view.x0;
+		view = { x0: cur.d.x[i] - span / 2, x1: cur.d.x[i] + span / 2 };
+		draw();
+	}
+	hoverIdx = i;
+	drawHover();
+});
+$('path-whole').checked = localStorage.getItem(PATH_WHOLE_KEY) === '1';
+$('path-whole').onchange = () => {
+	localStorage.setItem(PATH_WHOLE_KEY, $('path-whole').checked ? '1' : '0');
+	draw();
+};
+new ResizeObserver(() => draw()).observe($('path-box'));
 
 // ---------- input ----------
 
