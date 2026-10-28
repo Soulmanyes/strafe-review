@@ -238,6 +238,8 @@ function summarize(head, d, jumps) {
 	const pcts = lj.map((j) => j.pct);
 	const mean = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : NaN;
 	const timed = swaps.filter((w) => !w.gap);
+	const dipped = swaps.filter((w) => Number.isFinite(w.dip));
+	const avg = (vs) => (vs.length ? vs.reduce((a, v) => a + v, 0) / vs.length : NaN);
 	const pk = swaps.filter((w) => Number.isFinite(w.peak));
 	const ko = swaps.filter((w) => w.keyOff !== null);
 	const swapLost = swaps.reduce((a, w) => a + w.lost, 0);
@@ -267,9 +269,11 @@ function summarize(head, d, jumps) {
 		swaps,
 		swapTime: median(fin(swaps.map((w) => w.time))),
 		swapEff: median(fin(swaps.map((w) => w.eff))),
-		dip: median(fin(swaps.map((w) => w.dip))),
-		dipDown: median(fin(swaps.map((w) => w.dipDown))),
-		dipUp: median(fin(swaps.map((w) => w.dipUp))),
+		// averages, not medians, so down + low + up = dip exactly (low = share of swaps with a dip at all)
+		dip: avg(dipped.map((w) => w.dip)),
+		dipDown: avg(dipped.map((w) => w.dipDown)),
+		dipLowN: avg(dipped.map((w) => (w.dip > 0 ? 1 : 0))),
+		dipUp: avg(dipped.map((w) => w.dipUp)),
 		dipLow: median(fin(swaps.map((w) => w.dipLow))),
 		swapLost,
 		swapLostShare: lost > 0 ? (100 * swapLost) / lost : NaN,

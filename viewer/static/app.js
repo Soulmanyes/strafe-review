@@ -774,9 +774,9 @@ function runStatRows() {
 				{ name: 'Swap efficiency', desc: 'Gain % (same meaning as above) over just the 7 ticks around a switch. Everyone loses some here; low = you lose a lot while changing direction (top replays about 85 %).', tip: "Median gain % of ideal over the 7 ticks centred on each reversal. Other players' recordings: centred their key lag earlier, because their view angles trail their movement", v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
 				{
 					name: 'Gain dip',
-					desc: 'How long your gain stays below this run\'s average gain % at a switch, split into dropping (before the lowest tick) and recovering (after it). Shorter = faster swap.',
-					tip: "Per swap: the lowest gain % tick within 4 ticks of the swap window's centre, then the ticks in a row under the run's gain % (Gain card) before it (down) and after it (up); dip = down + 1 + up, 0 when no tick is under it. Medians over the swaps, so down + up need not add up to the total",
-					v: (s) => `${n(s.dip, 1, ' t')} (${n(s.dipDown, 1)} down · ${n(s.dipUp, 1)} up)`,
+					desc: 'How long your gain stays below this run\'s average gain % at a switch, split into dropping (before the worst tick), the worst tick itself and recovering (after it). Averages, so the parts add up. Shorter = faster swap.',
+					tip: "Per swap: the lowest gain % tick within 4 ticks of the swap window's centre, then the ticks in a row under the run's gain % (Gain card) before it (down) and after it (up); dip = down + 1 + up, 0 when no tick is under it. Averages over the swaps: down + low + up = total, where low is the share of swaps with a dip at all",
+					v: (s) => `${n(s.dip, 1, ' t')} (${n(s.dipDown, 1)} down · ${n(s.dipLowN, 1)} low · ${n(s.dipUp, 1)} up)`,
 					need: 'tick'
 				},
 				{
