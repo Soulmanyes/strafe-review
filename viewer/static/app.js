@@ -1527,8 +1527,10 @@ over.addEventListener(
 	'wheel',
 	(e) => {
 		if (!cur) return;
-		e.preventDefault();
 		const rect = over.getBoundingClientRect();
+		// over the lane titles the wheel scrolls the page
+		if (e.clientX - rect.left < GUTTER) return;
+		e.preventDefault();
 		const at = xAt(e.clientX - rect.left);
 		const k = Math.exp(e.deltaY * 0.0015);
 		const full = fullRange();
