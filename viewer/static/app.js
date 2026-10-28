@@ -35,7 +35,7 @@ const LANES = [
 	{ id: 'jumps', h: 38, title: 'Jumps', sub: 'gain % of ideal' },
 	{ id: 'yaw', h: 140, title: 'Yaw speed', sub: '°/tick vs optimal' },
 	{ id: 'ratio', h: 110, title: 'Angle', sub: 'yawRatio, 1 = optimal' },
-	{ id: 'gain', h: 140, title: 'Gain', sub: 'u/s per tick vs ideal, colour = %' },
+	{ id: 'gain', h: 140, title: 'Gain', sub: 'u/s, colour = gain %' },
 	{ id: 'keys', h: 112, title: 'Keys', sub: 'held vs ideal' },
 	{ id: 'speed', h: 120, title: 'Speed', sub: 'u/s, ground shaded' },
 	{ id: 'gaps', h: 26, title: 'Missed ticks', sub: '' }
@@ -1042,13 +1042,29 @@ const LANE_DRAW = {
 		const hi = Math.max(0.1, quantile(d, i0, i1, (i) => (ok(i) ? Math.max(d.ideal[i], d.gain[i]) : NaN), 0.98) * 1.1);
 		const lo = Math.max(-hi, Math.min(0, minOf(d, i0, i1, (i) => (ok(i) ? d.gain[i] : NaN))));
 		const Y = yMap(l, lo, hi);
-		// lost gain, shaded between gain and ideal
+		// lost gain, shaded between the gain and ideal lines: one piece per tick step, cut where they cross
 		g.fillStyle = COL.loss;
-		for (let i = i0; i <= i1; i++) {
-			if (!isAir(i) || !(d.gain[i] < d.ideal[i])) continue;
-			const X0 = px(d.x[i] - 0.5);
-			g.fillRect(X0, Y(d.ideal[i]), Math.max(px(d.x[i] + 0.5) - X0, 1), Y(d.gain[i]) - Y(d.ideal[i]));
+		g.beginPath();
+		for (let i = Math.max(1, i0); i <= i1; i++) {
+			if (!isAir(i) || !isAir(i - 1) || d.gap[i] > 0) continue;
+			const a = d.ideal[i - 1] - d.gain[i - 1];
+			const b = d.ideal[i] - d.gain[i];
+			if (!Number.isFinite(a) || !Number.isFinite(b) || (a <= 0 && b <= 0)) continue;
+			const xa = d.x[i - 1];
+			const xb = d.x[i];
+			// the part of the step where gain is under ideal: [ta, tb] of the way from i-1 to i
+			const tc = a / (a - b);
+			const ta = a > 0 ? 0 : tc;
+			const tb = b > 0 ? 1 : tc;
+			const at = (arr, t) => arr[i - 1] + (arr[i] - arr[i - 1]) * t;
+			const X = (t) => px(xa + (xb - xa) * t);
+			g.moveTo(X(ta), Y(at(d.ideal, ta)));
+			g.lineTo(X(tb), Y(at(d.ideal, tb)));
+			g.lineTo(X(tb), Y(at(d.gain, tb)));
+			g.lineTo(X(ta), Y(at(d.gain, ta)));
+			g.closePath();
 		}
+		g.fill();
 		// ideal in light grey, not the usual green: the gain line itself goes red to green
 		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.idealGain, 1.5, isAir);
 		if (!ghost?.gd.coarse) ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
