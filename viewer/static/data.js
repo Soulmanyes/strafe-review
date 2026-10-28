@@ -128,15 +128,16 @@ function parse(a) {
 	return d;
 }
 
-// CS:S-style jump gain, the way the SSJ plugin (Nairdaa/shavit-ssj) works it out. Every row of a jump
-// (the takeoff row and each air row) is one tick, scored from p = previous velocity · wishdir:
+// CS:S-style jump gain, the way the SSJ plugin (Nairdaa/shavit-ssj) works it out. Every tick (see ssjJump()
+// for which) is scored from p = previous velocity · wishdir:
 // (30 - |p|) / 30 when p < 30, else 0 (no key held: 0; negative when moving against wishdir).
 // Jump gain = average score * 100. SSJ's wall-touch flip is left out (no wall data here).
 // The plugin reads the move's own angles; the recorded yaw is a per-frame sample up to ~1.3° off the
 // real wishdir, and at 1000 u/s 1° moves p by 17. So air rows use the velocity instead: the air move adds
 // (30 - p) along wishdir, so the change in horizontal velocity m = |v - v_prev| gives p = 30 - m exactly
-// (score m / 30 up to 30, (60 - m) / 30 above). Changes over 60 u/s (teleport, booster, wall) are skipped.
-// The takeoff row is a ground move, so it uses the yaw and keys, read `lag` rows later (angleFit()): a
+// (score m / 30 up to 30, (60 - m) / 30 above). Changes over 60 u/s count only when they line up with the
+// wishdir from yaw + keys within 5° (turning far ahead of the velocity); else teleport, booster or wall, skipped.
+// A takeoff row is a ground move, so it uses the yaw and keys, read `lag` rows later (angleFit()): a
 // recording's angles can trail its velocity (replays by about 6 ticks). Rows after missed ticks are skipped.
 const SSJ_LAG_MAX = 10;
 
@@ -183,29 +184,44 @@ function angleFit(d) {
 	return best;
 }
 
-// SSJ score sum and tick count over rows s..e-1 (s = the takeoff row)
+// SSJ score of one row and whether it counts: { c, ok }. Air rows from the velocity change; the takeoff row
+// (a ground move) from yaw + keys.
 const SSJ_MAX_DV = 2 * AIR_ADD;
-const SSJ_FIT_MAX = 1; // u/s: a worse angle fit leaves the takeoff row out (the angles don't match the moves)
+const SSJ_ALIGN_COS = Math.cos((5 * Math.PI) / 180); // a big velocity change within 5° of wishdir is a real air move
+const SSJ_FIT_MAX = 1; // u/s: a worse angle fit leaves takeoff rows out (the angles don't match the moves)
+const SSJ_NEXT_MAX = 10; // ground ticks before the next takeoff still counted on the same SSJ line
 
-function ssjOver(d, s, e, fit) {
+function ssjRow(d, i, fit, takeoff) {
+	if (i < 1 || i >= d.n || d.gap[i] > 0) return { c: 0, ok: false };
+	const lagged = fit.err <= SSJ_FIT_MAX && i + fit.lag < d.n ? wishDir(d, i + fit.lag, i) : null;
+	if (takeoff) {
+		if (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n) return { c: 0, ok: false };
+		if (!lagged) return { c: 0, ok: true };
+		const p = d.vx[i - 1] * lagged[0] + d.vy[i - 1] * lagged[1];
+		return { c: p < AIR_ADD ? (AIR_ADD - Math.abs(p)) / AIR_ADD : 0, ok: true };
+	}
+	const dx = d.vx[i] - d.vx[i - 1];
+	const dy = d.vy[i] - d.vy[i - 1];
+	const m = Math.hypot(dx, dy);
+	// over 60 u/s: an air move only when it lines up with the keys' wishdir (turning far ahead of the
+	// velocity, scored negative by SSJ); otherwise a teleport, booster or wall, skipped
+	if (m > SSJ_MAX_DV && (!lagged || (dx * lagged[0] + dy * lagged[1]) / m < SSJ_ALIGN_COS)) return { c: 0, ok: false };
+	return { c: (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD, ok: true };
+}
+
+// SSJ sum and tick count for one jump the way its chat line adds them up: SSJ prints on the next jump,
+// so a line holds the air rows after takeoff, the landing row (its move starts in the air) and the next
+// jump's takeoff row (when it comes within SSJ_NEXT_MAX rows). The jump's own takeoff row is on the line before.
+function ssjJump(d, j, next, fit) {
 	let sum = 0;
 	let n = 0;
-	for (let i = Math.max(s, 1); i < e; i++) {
-		if (d.gap[i] > 0) continue;
-		if (i === s) {
-			if (!(fit.err <= SSJ_FIT_MAX) || i + fit.lag >= d.n) continue;
-			n++;
-			const w = wishDir(d, i + fit.lag, i);
-			if (!w) continue;
-			const p = d.vx[i - 1] * w[0] + d.vy[i - 1] * w[1];
-			if (p < AIR_ADD) sum += (AIR_ADD - Math.abs(p)) / AIR_ADD;
-			continue;
-		}
-		const m = Math.hypot(d.vx[i] - d.vx[i - 1], d.vy[i] - d.vy[i - 1]);
-		if (m > SSJ_MAX_DV) continue;
+	const add = (r) => {
+		if (!r.ok) return;
+		sum += r.c;
 		n++;
-		sum += (m <= AIR_ADD ? m : SSJ_MAX_DV - m) / AIR_ADD;
-	}
+	};
+	for (let i = j.s + 1; i <= Math.min(j.e, d.n - 1); i++) add(ssjRow(d, i, fit, false));
+	if (next && next.s - j.e <= SSJ_NEXT_MAX) add(ssjRow(d, next.s, fit, true));
 	return { sum, n };
 }
 
@@ -224,8 +240,14 @@ function findJumps(d, preRows) {
 			g += d.gain[j];
 			id += d.ideal[j];
 		}
-		const ssj = d.coarse ? { sum: 0, n: 0 } : ssjOver(d, s, e, angleFit(d));
-		return { s, e, x0: d.x[s], x1: d.x[e - 1], pct: id > 0 ? (100 * g) / id : NaN, takeoff: d.speed[s], land: d.speed[e - 1], ssj: ssj.n ? (100 * ssj.sum) / ssj.n : NaN, ssjSum: ssj.sum, ssjN: ssj.n };
+		return { s, e, x0: d.x[s], x1: d.x[e - 1], pct: id > 0 ? (100 * g) / id : NaN, takeoff: d.speed[s], land: d.speed[e - 1] };
+	});
+	const fit = d.coarse ? null : angleFit(d);
+	jumps.forEach((j, k) => {
+		const r = fit ? ssjJump(d, j, jumps[k + 1], fit) : { sum: 0, n: 0 };
+		j.ssj = r.n ? (100 * r.sum) / r.n : NaN;
+		j.ssjSum = r.sum;
+		j.ssjN = r.n;
 	});
 	// Jump 1 takes off in the start zone: the one in the air when the timer starts, else the next one
 	const p = Math.min(preRows || 0, d.n - 1);
@@ -472,4 +494,4 @@ function gainShade(p, hex) {
 	return `rgb(${mix(ch(1))},${mix(ch(3))},${mix(ch(5))})`;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjOver, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
