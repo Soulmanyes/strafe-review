@@ -543,6 +543,7 @@ Owner's scope: bhop bonuses on surf maps (66 tick), not surfing itself.
 - **Tick label:** `tickRate()` names 0.015 s as 66 tick (`Math.round` said 67). Time labels on the graph axis and readout use `tick × interval`, not `tick / tps`.
 - **Timing checks scale with tickrate:** early reversal, late first strafe, wrong key, no key and W in air are tick counts at 100 tick (settings labels say so), turned into the same time at the attempt's tickrate, rounded up (66 tick: early 18 -> 12, late first 3 -> 2, wrong key 2 -> 2, no key 3 -> 2, W in air 5 -> 4). Switch offsets and `SWITCH_WINDOW` stay in ticks (target "one tick before the reversal" at any tickrate); so do the smoothing windows and skip counts. Same in the recorder's in-game line (`atRate()`); `parse()` now carries `d.interval`.
   - Check: `node viewer/check_line.js --interval 0.015` replays every own attempt as if at 66 tick through both the recorder and the viewer (211/211 same; 8 attempts lose an early-reversal flag vs 100 tick).
+  - `check_line.js --log` can show DIFFs for 66-tick lines logged before the recorder got `atRate()` (surf_artois Bonus 1 runs of 2026-10-28): those were judged with 100-tick counts. Not a bug.
 - **Physics at 66 tick:** the 30 u/s air add holds (own surf_artois Bonus 1 finish: 1254 air rows, none above ideal). Own bonus finishes: 18.75 s and 19.37 s, 84 % gain, 22-23 jumps landed. SSJ is shown at 66 tick too, not checked against a server (66-tick CS:S gain out of scope, see above).
 
 ## Later / undecided
