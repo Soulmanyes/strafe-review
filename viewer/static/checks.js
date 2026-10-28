@@ -286,4 +286,4 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 	return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { CHECKS, REPLAY_SKIP, MIN_TAKEOFF, runChecks, strafesOf, switchesOf, turnStart, keyDir, median, strafing, turnBtn, interior, jumpRange };
+if (typeof module !== 'undefined') module.exports = { CHECKS, REPLAY_SKIP, MIN_TAKEOFF, SWITCH_WINDOW, runChecks, strafesOf, switchesOf, turnStart, keyDir, median, strafing, turnBtn, interior, jumpRange };

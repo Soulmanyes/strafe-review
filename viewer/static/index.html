@@ -35,6 +35,14 @@
 		<input id="note" maxlength="2000" placeholder="Note (e.g. new sens), saved when you press Enter or click away">
 		<span id="meta-status" class="hint"></span>
 	</div>
+	<section id="run-stats" hidden>
+		<div class="sec-head">
+			<h2>Run stats</h2>
+			<span id="rs-note" class="muted"></span>
+			<span class="hint">Timer start to run end, jumps 1+ · hover a name for how it's measured · underlined: click to zoom there</span>
+		</div>
+		<div id="rs-body"></div>
+	</section>
 	<div id="toolbar">
 		<button id="whole">Whole attempt</button>
 		<button id="jump1">Jump 1</button>
@@ -93,6 +101,7 @@
 </main>
 <script src="/static/data.js"></script>
 <script src="/static/checks.js"></script>
+<script src="/static/stats.js"></script>
 <script src="/static/mouse.js"></script>
 <script src="/static/autotags.js"></script>
 <script src="/static/app.js"></script>

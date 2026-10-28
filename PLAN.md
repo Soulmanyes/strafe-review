@@ -449,6 +449,22 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - Check: `node viewer/check_autotags.js` runs hand-made cases, then the tags the saved attempts get (189 attempts: 3 PBs on bhop_ambience, no sens stamped yet).
 - **Drill page tag filter:** a Tag select in the bar holds own and automatic tags of own attempts on the picked map. Only attempts with the tag are counted, and the "Latest session" scope is applied after the filter. Replays are not filtered. The choice is kept in localStorage `strafe-review-drill-tag`. Bulk tagging was offered and not wanted.
 
+#### Run stats v1 (2026-10-28)
+
+- **Owner's call.** The swap display (to-do `strafe-review-swap-display`) became part of a whole-run stats section above the main page's graph: "every possible stat that is useful" over the whole run. Per-jump detail stays in the graphs, so there is no per-jump table here.
+- **Where.** `#run-stats` sits between the tags/note row and the toolbar, so toolbar, readout and graph stay together (Claude's placement). Cards: Run, Gain, Speed (with jump 1), Turning, Swaps, Keys, Mistakes. Each name has a tooltip with its definition. Best jump, worst jump, worst swap and jump 1 gain are clickable and zoom the graph there. With a Compare recording, its value sits next to each one in pink (not for mistakes).
+- **Code.** Everything is in `summarize()` (stats.js), so the compare page can show the same numbers later. `swapsOf()` there does the swaps. `node viewer/check_stats.js` prints them after the `|`. Older fields print unchanged (diffed before and after).
+- **Gating.** Spectated live runs (`d.coarse`) show only run, gain % per jump and speed numbers. Other players' recordings leave out the key rows (switch, no key, W in air), and their sync is marked approx.
+- **Swap definitions** (`swapsOf()`):
+  - A swap is two strafes in a row inside a jump (`strafesOf()`). It is skipped when there are missed ticks within 12 ticks of the reversal; elsewhere in the strafe they don't matter (one run has a missed tick in almost every strafe).
+  - The reversal is the first row from 4 ticks before the new strafe's start where the raw per-tick yaw turns the new way. The 5-tick average smears it.
+  - Time: from the last old-side tick at 85 %+ of optimal (raw yaw) to the first new-side one.
+  - Efficiency / lost: gain over ideal on the 7 rows centred on the reversal.
+  - Peak: the fastest 2-tick average of the new-side turn in the 6 ticks after the reversal, vs optimal. Over 1.15 is overshoot, under 0.85 undershoot. It is not judged when +left/+right is held. Those swaps stay in time and efficiency, and the worst swap says "(+left/right)".
+  - Key switch: the switch check's own rule (nearest switch within `SWITCH_WINDOW`, offset from the new strafe's start, target -1). On target = 0-2 ticks before.
+- **Measured over the store (2026-10-28):** own swaps (1753) median time 8 ticks, 4 down / 4 up. Efficiency 54 % (quartiles 38-63). Replays (286) have time 4 (2 + 2) and efficiency 99 %. Mid-strafe efficiency is about 95 % for both. Speed-derived gain gives the same 54 % on own runs, so this is a real gap and not a measuring artifact. On the owner's finished ambience runs, swaps hold about 50-60 % of all speed lost. Own peak median 0.93 (replays 1.12), so own swaps undershoot more often than they overshoot.
+- Other new numbers: speed lost (sum of ideal - gain on strafing ticks), spread (std dev of landed jumps' gain %), left/right gain %, band shares (in / too slow / too fast, yawRatio 0.85-1.15 on strafe middles), median turn speed (+ cm/s with the DPI), strafe length, +left/+right ticks, air time, no key while turning, W in air, distance.
+
 ## Later / undecided
 
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.

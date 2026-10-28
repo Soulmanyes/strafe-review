@@ -2,6 +2,7 @@
 'use strict';
 // Prints the compare page's summary stats (static/stats.js) for saved attempts, so the numbers can be
 // checked against the jump strip and the drill page, and the key lag against the known replay lead.
+// After the bar: the main page's run stats (band, swaps, key switch), the same summarize() call.
 //
 //   node viewer/check_stats.js [--store DIR] [id ...]
 
@@ -35,7 +36,9 @@ for (const m of fs.readdirSync(store)) {
 		console.log(
 			`${m} ${id} ${who.padEnd(20)} ${String(a.reason).padEnd(9)} gain ${f(s.gainPct)}% sync ${f(s.sync, 1)}% lag ${s.lag} angle ${f(s.angle)} ` +
 				`strafes/j ${f(s.strafesPerJump, 1)} turning ${f(s.turnPct, 1)}% landed ${s.landed}/${s.jumps} j1 ${s.j1 ? f(s.j1.pct) : '-'}% ` +
-				`vmax ${f(s.speedMax, 0)} vavg ${f(s.speedAvg, 0)} vend ${f(s.speedEnd, 0)}`
+				`vmax ${f(s.speedMax, 0)} vavg ${f(s.speedAvg, 0)} vend ${f(s.speedEnd, 0)} | ` +
+				`band ${f(s.inBand, 1)}% swaps ${s.swaps.length} time ${f(s.swapTime, 1)} eff ${f(s.swapEff, 1)}% lost@swaps ${f(s.swapLostShare, 0)}% ` +
+				`peak ${f(s.peak)} over/under ${s.over}/${s.under} key ${f(s.keyOff, 1)}`
 		);
 	}
 }

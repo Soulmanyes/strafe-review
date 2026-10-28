@@ -390,6 +390,7 @@ async function open(dir, id) {
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	// runEnd(), not just before the post tail: a replay pauses at its end and keeps sending rows
 	cur = { head: a, d, jumps, j1, tps: Math.round(1 / a.interval), endIdx: runEnd(a, d) };
+	cur.stats = summarize(a, d, jumps);
 	pathView = null;
 	cur.path = recordingPath(a, d, jumps, cur.endIdx);
 	location.hash = `${dir}/${id}`;
@@ -495,7 +496,7 @@ async function setGhost() {
 		const d = parse(a);
 		const jumps = findJumps(d, a.preRows).jumps;
 		// from the recording's own rows: the aligned copy's gaps would bend the path
-		g = { head: a, d, jumps, path: recordingPath(a, d, jumps, runEnd(a, d)) };
+		g = { head: a, d, jumps, path: recordingPath(a, d, jumps, runEnd(a, d)), stats: summarize(a, d, jumps) };
 		ghostCache.set(key, g);
 	}
 	const al = alignGhost(cur, g, $('align').value);
@@ -506,7 +507,7 @@ async function setGhost() {
 	const how = v.startsWith('p:') ? presets(candidates()).find((p) => p.id === v).name : 'picked';
 	// the path in the open attempt's turn, so both share one frame
 	const path = turnPath(g.path, cur.path.turn);
-	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how, path };
+	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how, path, stats: g.stats, ownPath: g.path };
 }
 
 // A ghost that fails to load must not stop the open attempt from showing
@@ -527,6 +528,7 @@ async function compareChanged() {
 	localStorage.setItem(ALIGN_KEY, $('align').value);
 	await setGhostSafe();
 	showHead();
+	showRunStats();
 	draw();
 }
 
@@ -574,10 +576,12 @@ function showMistakes() {
 	const skipped = cur && isOther(cur.head) ? " · key timing checks are skipped for other players' recordings (replay keys run ahead of the turn)" : '';
 	if (cur && cur.d.coarse) {
 		$('mistakes-sum').textContent = "Checks off: a spectated live player's speed only updates every few ticks, too coarse to judge ticks.";
+		showRunStats();
 		return;
 	}
 	$('mistakes-sum').textContent = cur ? `${ms.length} found · ranked by speed lost (sum of ideal - gain over the ticks involved), ${total.toFixed(0)} u/s in all${skipped}` : '';
 	if (cur && !ms.length) box.textContent = 'No mistakes found with the current settings.';
+	showRunStats();
 	for (const m of ms) {
 		const b = document.createElement('button');
 		b.className = `mk${selMistake === m ? ' sel' : ''}`;
@@ -692,6 +696,174 @@ function showHead() {
 		note('ghost', `Ghost (dashed pink): ${labelText(gh)} · ${ghost.how} · ${when(gh.started)} · ${end} · ${al}`);
 		if (ghost.d.derived && !cur.d.derived) note('ghost', 'Ghost gain and angle rebuilt from speed');
 		if (isOther(gh)) note('ghost', 'Ghost keys not drawn: replay keys run ahead of the angles');
+	}
+}
+
+// ---------- run stats ----------
+
+// Whole-run numbers above the graph, from summarize() (stats.js) so the compare page agrees. With a
+// ghost, its value sits next to each one in pink (not for rows with ghost: false). need: 'tick' rows are left out for a spectated live
+// run (speed only every few ticks), 'keys' rows for other players' recordings (their keys run ahead).
+function runStatRows() {
+	const n = (v, k = 1, unit = '') => (Number.isFinite(v) ? `${v.toFixed(k)}${unit}` : '–');
+	const endOf = (h) => (h.reason === 'finish' && h.runTime ? `${h.runTime.toFixed(3)} s` : REASONS[h.reason] || h.reason || '?');
+	const jumpOf = (r, j) => (j ? `jump ${j.num} · ${n(j.pct, 2, ' %')}` : '–');
+	const swapOf = (r, w) => (w ? `jump ${w.jump} swap ${w.k}${w.btn ? ' (+left/right)' : ''} · ${n(w.lost, 1, ' u/s')}` : '–');
+	const zoomJump = (num) => {
+		const j = cur.jumps.find((jj) => jj.num === num);
+		if (j) zoomTo(j);
+	};
+	const cms = (r, deg) => {
+		const m = mouseFor(r.head, mouseNow, dpi);
+		return m && Number.isFinite(deg) ? ` · ${cmPerSec(deg, r.head.interval, m).toFixed(1)} cm/s` : '';
+	};
+	return [
+		{
+			title: 'Run',
+			rows: [
+				{ name: 'End', tip: 'Finish time, or how the attempt ended', v: (s, r) => endOf(r.head) },
+				{ name: 'Jumps landed', tip: 'Jumps from jump 1 on that landed before the run end', v: (s) => `${s.landed} of ${s.jumps}` },
+				{ name: 'Missed ticks', tip: 'Ticks the HUD missed inside the run (frames slower than ticks)', v: (s, r) => String(runGaps(r.head, r.d)) },
+				{ name: 'Distance', tip: 'Horizontal distance from the timer start to the run end, built up from speed (teleports add nothing)', v: (s, r) => `${Math.round(pathDistance(r.path, Math.min(r.head.preRows || 0, r.d.n - 1), s.endIdx))} u` },
+				{ name: 'Air time', tip: 'Share of the run ticks in the air (vz not 0)', v: (s) => n(s.airPct, 1, ' %'), need: 'tick' }
+			]
+		},
+		{
+			title: 'Gain',
+			rows: [
+				{ name: 'Gain %', tip: 'Sum of gain over sum of ideal gain, every jump from jump 1 on (as the jump strip)', v: (s) => n(s.gainPct, 2, ' %') },
+				{ name: 'Speed lost', tip: 'Sum of ideal - gain over every strafing tick (air, 100+ u/s, no wall hit): speed you could have had', v: (s) => n(s.lost, 0, ' u/s'), need: 'tick' },
+				{ name: 'Best jump', tip: 'Landed jump with the highest gain %', v: (s, r) => jumpOf(r, s.bestJump), click: (s) => s.bestJump && zoomJump(s.bestJump.num) },
+				{ name: 'Worst jump', tip: 'Landed jump with the lowest gain %', v: (s, r) => jumpOf(r, s.worstJump), click: (s) => s.worstJump && zoomJump(s.worstJump.num) },
+				{ name: 'Spread', tip: 'Standard deviation of the landed jumps\' gain %: lower = more even jump to jump', v: (s) => n(s.spread, 1, ' %') },
+				{ name: 'Left / right', tip: 'Gain % on ticks turning left (A side) and turning right (D side)', v: (s) => `${n(s.leftPct, 1)} / ${n(s.rightPct, 1)} %`, need: 'tick' }
+			]
+		},
+		{
+			title: 'Speed',
+			rows: [
+				{ name: 'Max', v: (s) => n(s.speedMax, 0, ' u/s') },
+				{ name: 'Average', tip: 'Horizontal speed averaged over the run ticks', v: (s) => n(s.speedAvg, 0, ' u/s') },
+				{ name: 'At the end', tip: 'At the finish, or at the end of the recording', v: (s) => n(s.speedEnd, 0, ' u/s') },
+				{ name: 'Jump 1 takeoff', v: (s) => (s.j1 ? n(s.j1.takeoff, 1, ' u/s') : '–') },
+				{ name: 'Jump 1 landing', v: (s) => (s.j1 && s.j1.landed ? n(s.j1.land, 1, ' u/s') : '–') },
+				{ name: 'Jump 1 gain', v: (s) => (s.j1 ? n(s.j1.pct, 2, ' %') : '–'), click: () => zoomJump(1) }
+			]
+		},
+		{
+			title: 'Turning',
+			rows: [
+				{ name: 'Angle (yawRatio)', tip: 'Median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out). 1 = optimal', v: (s) => n(s.angle, 2), need: 'tick' },
+				{ name: 'In optimal band', tip: `Strafe-middle ticks at yawRatio ${BAND_LO}-${BAND_HI} (the yaw lane's band)`, v: (s) => n(s.inBand, 1, ' %'), need: 'tick' },
+				{ name: 'Too slow / too fast', tip: `Strafe-middle ticks under ${BAND_LO} / over ${BAND_HI}`, v: (s) => `${n(s.tooSlow, 1)} / ${n(s.tooFast, 1)} %`, need: 'tick' },
+				{ name: 'Turn speed', tip: 'Median turn speed of strafe middles (5-tick average), and in mouse terms when the DPI is set (a replay at your sens)', v: (s, r) => `${n(s.yawMid, 2, '°/t')}${cms(r, s.yawMid)}`, need: 'tick' },
+				{ name: 'Strafes per jump', tip: 'Turns to one side per landed jump', v: (s) => n(s.strafesPerJump, 1), need: 'tick' },
+				{ name: 'Strafe length', tip: 'Median ticks of one strafe (one turn to one side)', v: (s) => n(s.strafeLen, 0, ' t'), need: 'tick' },
+				{ name: 'Air time turning', tip: 'Strafing ticks with a turn of more than 0.3°/tick', v: (s) => n(s.turnPct, 1, ' %'), need: 'tick' },
+				{ name: '+left/+right ticks', tip: 'Strafing ticks with a turn button held (fixed cl_yawspeed turn, left out of the angle numbers)', v: (s) => String(s.btnTicks), need: 'tick' }
+			]
+		},
+		{
+			title: 'Swaps (strafe direction changes)',
+			rows: [
+				{ name: 'Swaps', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swaps.length), need: 'tick' },
+				{ name: 'Swap time', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
+				{ name: 'Swap efficiency', tip: 'Median gain % of ideal over the 7 ticks centred on each reversal', v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
+				{ name: 'Lost at swaps', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
+				{ name: 'Peak after swap', tip: `Median of the fastest 2-tick turn in the 6 ticks after each reversal, vs optimal (100 % = optimal). +left/+right swaps not judged`, v: (s) => n(100 * s.peak, 0, ' %'), need: 'tick' },
+				{ name: 'Over / undershoot', tip: `Swaps whose peak is over ${BAND_HI * 100} % / under ${BAND_LO * 100} % of optimal, of the swaps judged`, v: (s) => `${s.over} / ${s.under} of ${s.judged}`, need: 'tick' },
+				{ name: 'Worst swap', tip: 'The swap with the most speed lost in its 7-tick window. (+left/right): a turn button was held, e.g. the prestrafe into jump 1', v: (s, r) => swapOf(r, s.worstSwap), click: (s) => s.worstSwap && zoomTo({ x0: cur.d.x[s.worstSwap.i] - 25, x1: cur.d.x[s.worstSwap.i] + 25 }), need: 'tick' }
+			]
+		},
+		{
+			title: 'Keys',
+			rows: [
+				{
+					name: 'Sync (keys vs turn)',
+					tip: "Strafing ticks where A or D alone matches the turn side, keys shifted by the best lag. +left/+right ticks out. Not the game's sync number",
+					v: (s, r) => `${n(s.sync, 1, ' %')}${isOther(r.head) ? ' approx.' : ''}`,
+					need: 'tick'
+				},
+				{ name: 'Key lag', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
+				{ name: 'Switch vs reversal', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), need: 'keys' },
+				{ name: 'Switch on target', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), need: 'keys' },
+				{ name: 'Early / late', tip: 'Switches 3+ ticks before / after the reversal', v: (s) => `${s.keyEarly} / ${s.keyLate}`, need: 'keys' },
+				{ name: 'No key while turning', tip: 'Turning strafing ticks with neither or both of A and D (+left/+right ticks out)', v: (s) => n(s.noKeyPct, 1, ' %'), need: 'keys' },
+				{ name: 'W in the air', tip: 'Strafing ticks with W held', v: (s) => n(s.wAirPct, 1, ' %'), need: 'keys' }
+			]
+		},
+		{
+			title: 'Mistakes',
+			rows: [
+				{ name: 'Found', tip: 'Mistake checks with the current settings (list below the path)', v: (s, r) => (r.mistakes ? String(r.mistakes.length) : '–'), need: 'tick', ghost: false },
+				{ name: 'Speed lost to them', v: (s, r) => (r.mistakes ? n(r.mistakes.reduce((a, m) => a + m.lost, 0), 1, ' u/s') : '–'), need: 'tick', ghost: false }
+			]
+		}
+	];
+}
+
+function showRunStats() {
+	const sec = $('run-stats');
+	sec.hidden = !cur;
+	if (!cur) return;
+	const box = $('rs-body');
+	box.replaceChildren();
+	box.classList.toggle('with-ghost', !!ghost);
+	const me = { head: cur.head, d: cur.d, path: cur.path, mistakes: cur.mistakes };
+	const gh = ghost && { head: ghost.head, d: ghost.d, path: ghost.ownPath, mistakes: null };
+	const skip = (r, need) => (need === 'tick' && r.d.coarse) || (need === 'keys' && (r.d.coarse || isOther(r.head)));
+	const why = (r) => (r.d.coarse ? 'spectated: speed every few ticks' : 'not run (replay keys run ahead)');
+	const notes = [];
+	if (cur.d.coarse) notes.push("Spectated live run: speed only updates every few ticks, so only run, gain and speed numbers are shown.");
+	else if (isOther(cur.head)) notes.push("Other player's recording: key numbers are left out (replay keys run ahead of the angles).");
+	if (gh) notes.push(`Pink: the Compare recording (${labelText(gh.head)}).`);
+	$('rs-note').textContent = notes.join(' ');
+	for (const card of runStatRows()) {
+		const c = document.createElement('div');
+		c.className = 'rs-card';
+		const h = document.createElement('h3');
+		h.textContent = card.title;
+		c.append(h);
+		if (card.rows.every((row) => skip(me, row.need)) && !(gh && card.rows.some((row) => !skip(gh, row.need)))) {
+			const off = document.createElement('div');
+			off.className = 'rs-off';
+			off.textContent = `Not shown: ${why(me)}`;
+			c.append(off);
+			box.append(c);
+			continue;
+		}
+		for (const row of card.rows) {
+			const el = document.createElement('div');
+			el.className = 'rs-row';
+			const name = document.createElement('span');
+			name.className = 'rs-name';
+			name.textContent = row.name;
+			if (row.tip) name.title = row.tip;
+			const val = document.createElement('span');
+			val.className = 'rs-val';
+			if (skip(me, row.need)) {
+				val.textContent = '–';
+				val.title = why(me);
+			} else {
+				val.textContent = row.v(cur.stats, me);
+				if (row.click) {
+					val.classList.add('rs-link');
+					val.onclick = () => {
+						row.click(cur.stats);
+						$('plot').scrollIntoView({ block: 'nearest' });
+					};
+				}
+			}
+			el.append(name, val);
+			if (gh) {
+				const g = document.createElement('span');
+				g.className = 'rs-ghost';
+				g.textContent = skip(gh, row.need) || row.ghost === false ? '–' : row.v(ghost.stats, gh);
+				el.append(g);
+			}
+			c.append(el);
+		}
+		box.append(c);
 	}
 }
 
@@ -1763,6 +1935,7 @@ $('dpi').onchange = () => {
 	saveDpi(dpi);
 	if (!(dpi > 0)) dpi = null;
 	showCm360();
+	showRunStats();
 };
 
 // A new attempt saved by the collector shows up in the list at once (the open one stays open)
