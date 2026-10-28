@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Strafe Review viewer: serves the saved attempts and the review page on localhost.
 
-    python viewer/server.py [--port 8765] [--store DIR] [--log FILE] [--no-collect]
+    python viewer/server.py [--port 8765] [--store DIR] [--log FILE] [--no-collect] [--no-browser]
 
 It also runs the collector (collector/collector.py) in a thread, tailing Momentum's yaw.log, so one
 process records and serves. If the port is taken, another copy is already doing both and this one exits.
+Once it serves, it opens the page in the default browser.
 
 Routes:
   /                          the page (viewer/static/index.html)
@@ -33,6 +34,7 @@ import struct
 import sys
 import threading
 import time
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -395,6 +397,7 @@ def main():
     ap.add_argument("--game-cfg", default=GAME_CFG, help="Momentum's cfg/config.cfg")
     ap.add_argument("--log", default=collector.LOG, help="the console log to collect from (con_logfile)")
     ap.add_argument("--no-collect", action="store_true", help="only serve, don't collect")
+    ap.add_argument("--no-browser", action="store_true", help="don't open the page in the browser")
     args = ap.parse_args()
     Handler.store = Path(args.store)
     Handler.game_cfg = Path(args.game_cfg)
@@ -407,7 +410,11 @@ def main():
         sys.exit(f"Strafe Review: port {args.port} is in use ({e.strerror}); is it already running?")
     if not args.no_collect:
         threading.Thread(target=collect, args=(args.log, Handler.store), daemon=True).start()
-    print(f"Strafe Review viewer on http://127.0.0.1:{args.port}/ (attempts from {args.store})", flush=True)
+    url = f"http://127.0.0.1:{args.port}/"
+    print(f"Strafe Review viewer on {url} (attempts from {args.store})", flush=True)
+    if not args.no_browser:
+        # only the copy that got the port opens a tab, so a second start doesn't add one
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
