@@ -585,6 +585,7 @@ Goal: other people can use Strafe Review on Windows. A standalone release comes 
 ## Later / undecided
 
 - **Surf main tracks (real surfing):** not wanted (owner, 2026-10-28: "actual surfing doesn't need this, just bhop bonuses within surf"). Replays and spectates of surf runs still get saved and shown with the bhop analysis (ramps read as air, so gain and checks are meaningless there). Nothing is built for it.
+- **Strafe histograms, with snapshots (owner, 2026-10-28; details open):** histograms of strafe values (for example gain %, yaw speed vs optimal, angle, strafe length per strafe), and snapshots of them to keep and compare later. To decide: which values, which attempts feed one (one run, a session, a map), and whether a snapshot is a saved picture (like the section Copy/Save) or saved numbers the page can draw again next to a newer one.
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.
 - **Viewer as a tab in the Source Yaw GTK app:** to be decided later. The web page comes first.
 - **Raw mouse dx lane:**
