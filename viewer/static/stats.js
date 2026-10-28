@@ -23,14 +23,26 @@ function rawRatio(d, i, dir) {
 	return i >= 0 && i < d.n && d.opt[i] > 0 && Number.isFinite(d.yawd[i]) ? (dir * d.yawd[i]) / d.opt[i] : NaN;
 }
 
-// Strafe direction swaps of one jump. A swap is two strafes in a row (strafesOf()), with no missed
-// ticks within SWAP_SEARCH ticks of the reversal. Its reversal is the first row from 4 ticks before the new strafe's start where the raw
+// Ticks from the key switch nearest strafe B's start to that start (the switch check's rule), or null
+function keyOffOf(d, sw, B) {
+	let best = null;
+	for (const w of sw) {
+		if (w.dir !== B.dir) continue;
+		const off = d.tick[w.i] - d.tick[B.i0];
+		if (Math.abs(off) <= SWITCH_WINDOW && (best === null || Math.abs(off + 1) < Math.abs(best + 1))) best = off;
+	}
+	return best;
+}
+
+// Strafe direction swaps of one jump. A swap is two strafes in a row (strafesOf()). With missed ticks
+// within SWAP_SEARCH ticks of the reversal it gets gap: true and only keyOff (the rest is NaN). Its reversal is the first row from 4 ticks before the new strafe's start where the raw
 // per-tick yaw turns the new way (the 5-tick average lags and smears it). Per swap:
 //  - time: ticks from the last old-side tick at 85 %+ of optimal to the first new-side one (fall + ramp).
 //  - eff / lost: gain over ideal on the 7 rows centred on the reversal, and ideal - gain there in u/s.
 //  - peak: the highest 2-tick average of the new-side turn over the 6 ticks from the reversal, vs optimal.
 //    Over 1.15 = overshoot, under 0.85 = undershoot. Not judged when +left/+right is held (fixed turn rate).
-//  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Replays: null.
+//  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Null for replays
+//    and, as in the check, when either strafe has missed ticks anywhere.
 // btn = +left/+right held on either side of the reversal (the owner's prestrafe into jump 1).
 function swapsOf(d, j, endIdx, replay) {
 	const sts = strafesOf(d, j, endIdx);
@@ -44,7 +56,11 @@ function swapsOf(d, j, endIdx, replay) {
 		const hi = Math.min(B.i1, B.i0 + SWAP_SEARCH);
 		let gap = false;
 		for (let i = lo + 1; i <= hi; i++) if (d.gap[i] > 0) gap = true;
-		if (gap) continue;
+		if (gap) {
+			// still counted for the key switch, which the switch check judges here too
+			out.push({ jump: j.num, k, dir: B.dir, i: B.i0, gap: true, fall: NaN, ramp: NaN, time: NaN, eff: NaN, lost: 0, peak: NaN, keyOff: replay || A.gap || B.gap ? null : keyOffOf(d, sw, B), btn: false });
+			continue;
+		}
 		let rev = B.i0;
 		for (let i = Math.max(A.i0, B.i0 - 4); i <= B.i0; i++) {
 			if (Math.sign(d.yawd[i]) === B.dir && Math.abs(d.yawd[i]) > 0.05) {
@@ -81,17 +97,8 @@ function swapsOf(d, j, endIdx, replay) {
 				if (Number.isFinite(r) && !(r <= peak)) peak = r;
 			}
 		}
-		let keyOff = null;
-		if (!replay) {
-			let best = null;
-			for (const w of sw) {
-				if (w.dir !== B.dir) continue;
-				const off = d.tick[w.i] - d.tick[B.i0];
-				if (Math.abs(off) <= SWITCH_WINDOW && (!best || Math.abs(off + 1) < Math.abs(best + 1))) best = off;
-			}
-			keyOff = best;
-		}
-		out.push({ jump: j.num, k, dir: B.dir, i: rev, fall, ramp, time: fall + ramp, eff: id > 0 ? (100 * g) / id : NaN, lost: Math.max(id - g, 0), peak, keyOff, btn });
+		const keyOff = replay || A.gap || B.gap ? null : keyOffOf(d, sw, B);
+		out.push({ jump: j.num, k, dir: B.dir, i: rev, gap: false, fall, ramp, time: fall + ramp, eff: id > 0 ? (100 * g) / id : NaN, lost: Math.max(id - g, 0), peak, keyOff, btn });
 	}
 	return out;
 }
@@ -201,6 +208,7 @@ function summarize(head, d, jumps) {
 	const lj = perJump.filter((j) => j.landed && Number.isFinite(j.pct));
 	const pcts = lj.map((j) => j.pct);
 	const mean = pcts.length ? pcts.reduce((a, v) => a + v, 0) / pcts.length : NaN;
+	const timed = swaps.filter((w) => !w.gap);
 	const pk = swaps.filter((w) => Number.isFinite(w.peak));
 	const ko = swaps.filter((w) => w.keyOff !== null);
 	const swapLost = swaps.reduce((a, w) => a + w.lost, 0);
@@ -232,15 +240,14 @@ function summarize(head, d, jumps) {
 		swapEff: median(fin(swaps.map((w) => w.eff))),
 		swapLost,
 		swapLostShare: lost > 0 ? (100 * swapLost) / lost : NaN,
-		worstSwap: swaps.length ? swaps.reduce((a, w) => (w.lost > a.lost ? w : a)) : null,
+		swapsTimed: timed.length,
+		worstSwap: timed.length ? timed.reduce((a, w) => (w.lost > a.lost ? w : a)) : null,
 		peak: pk.length ? median(pk.map((w) => w.peak)) : NaN,
 		over: pk.filter((w) => w.peak > BAND_HI).length,
 		under: pk.filter((w) => w.peak < BAND_LO).length,
 		judged: pk.length,
 		keyOff: ko.length ? median(ko.map((w) => w.keyOff)) : NaN,
 		keyOnTarget: ko.length ? (100 * ko.filter((w) => w.keyOff >= -2 && w.keyOff <= 0).length) / ko.length : NaN,
-		keyEarly: ko.filter((w) => w.keyOff < -2).length,
-		keyLate: ko.filter((w) => w.keyOff > 0).length,
 		gainPct: id > 0 ? (100 * g) / id : NaN,
 		sync: syncOver(d, ranges, lag).sync,
 		lag,

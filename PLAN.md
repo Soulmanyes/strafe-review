@@ -461,8 +461,13 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - Time: from the last old-side tick at 85 %+ of optimal (raw yaw) to the first new-side one.
   - Efficiency / lost: gain over ideal on the 7 rows centred on the reversal.
   - Peak: the fastest 2-tick average of the new-side turn in the 6 ticks after the reversal, vs optimal. Over 1.15 is overshoot, under 0.85 undershoot. It is not judged when +left/+right is held. Those swaps stay in time and efficiency, and the worst swap says "(+left/right)".
-  - Key switch: the switch check's own rule (nearest switch within `SWITCH_WINDOW`, offset from the new strafe's start, target -1). On target = 0-2 ticks before.
-- **Measured over the store (2026-10-28):** own swaps (1753) median time 8 ticks, 4 down / 4 up. Efficiency 54 % (quartiles 38-63). Replays (286) have time 4 (2 + 2) and efficiency 99 %. Mid-strafe efficiency is about 95 % for both. Speed-derived gain gives the same 54 % on own runs, so this is a real gap and not a measuring artifact. On the owner's finished ambience runs, swaps hold about 50-60 % of all speed lost. Own peak median 0.93 (replays 1.12), so own swaps undershoot more often than they overshoot.
+  - Key switch: the switch check's own rule (nearest switch within `SWITCH_WINDOW`, offset from the new strafe's start, target -1; none when either strafe has missed ticks). On target = 0-2 ticks before. Early / late use the switch check's thresholds from Check settings, so the counts equal the Mistakes list's switch entries (220 of 220 own attempts at defaults).
+  - A swap with missed ticks near the reversal keeps only its key switch (`gap: true`) and isn't in the Swaps count.
+- **Measured over the store with the shipped `swapsOf()` (2026-10-28):**
+  - Own swaps (2035): median time 8 ticks (4 down + 4 up), efficiency 54 % (quartiles 36-63), peak 0.91. Under 0.85: 763 of 2011; over 1.15: 224.
+  - Replays (303): time 4 (2 + 2), efficiency 99 %, peak 1.04.
+  - Mid-strafe efficiency is about 95 % for both. Speed-derived gain gives the same 54 % on own runs, so the gap is real, not a measuring artifact.
+  - On the owner's finished ambience runs, swaps hold 50-64 % of all speed lost (one run with missed ticks near most swaps: 4 %).
 - Other new numbers: speed lost (sum of ideal - gain on strafing ticks), spread (std dev of landed jumps' gain %), left/right gain %, band shares (in / too slow / too fast, yawRatio 0.85-1.15 on strafe middles), median turn speed (+ cm/s with the DPI), strafe length, +left/+right ticks, air time, no key while turning, W in air, distance.
 
 ## Later / undecided

@@ -713,6 +713,9 @@ function runStatRows() {
 		const j = cur.jumps.find((jj) => jj.num === num);
 		if (j) zoomTo(j);
 	};
+	// early/late by the switch check's current thresholds, so the counts match the Mistakes list
+	const sc = loadSettings().switch || {};
+	const sw = Object.fromEntries(Object.entries(CHECKS.find((c) => c.id === 'switch').params).map(([k, p]) => [k, sc[k] === undefined ? p.v : sc[k]]));
 	const cms = (r, deg) => {
 		const m = mouseFor(r.head, mouseNow, dpi);
 		return m && Number.isFinite(deg) ? ` · ${cmPerSec(deg, r.head.interval, m).toFixed(1)} cm/s` : '';
@@ -766,7 +769,7 @@ function runStatRows() {
 		{
 			title: 'Swaps (strafe direction changes)',
 			rows: [
-				{ name: 'Swaps', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swaps.length), need: 'tick' },
+				{ name: 'Swaps', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swapsTimed), need: 'tick' },
 				{ name: 'Swap time', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
 				{ name: 'Swap efficiency', tip: 'Median gain % of ideal over the 7 ticks centred on each reversal', v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
 				{ name: 'Lost at swaps', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
@@ -787,7 +790,12 @@ function runStatRows() {
 				{ name: 'Key lag', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
 				{ name: 'Switch vs reversal', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), need: 'keys' },
 				{ name: 'Switch on target', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), need: 'keys' },
-				{ name: 'Early / late', tip: 'Switches 3+ ticks before / after the reversal', v: (s) => `${s.keyEarly} / ${s.keyLate}`, need: 'keys' },
+				{
+					name: 'Early / late',
+					tip: `Switches ${sw.early}+ ticks before / ${sw.late}+ ticks after the reversal (the switch check's thresholds in Check settings)`,
+					v: (s) => `${s.swaps.filter((w) => w.keyOff !== null && w.keyOff <= -sw.early).length} / ${s.swaps.filter((w) => w.keyOff !== null && w.keyOff >= sw.late).length}`,
+					need: 'keys'
+				},
 				{ name: 'No key while turning', tip: 'Turning strafing ticks with neither or both of A and D (+left/+right ticks out)', v: (s) => n(s.noKeyPct, 1, ' %'), need: 'keys' },
 				{ name: 'W in the air', tip: 'Strafing ticks with W held', v: (s) => n(s.wAirPct, 1, ' %'), need: 'keys' }
 			]
