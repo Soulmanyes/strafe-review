@@ -50,6 +50,8 @@ let view = { x0: 0, x1: 1 };
 let hoverX = null;
 let drag = null;
 let lanes = [];
+let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for recordings that didn't record theirs
+let dpi = null; // the mouse DPI typed in on the main page (mouse.js), or what Momentum stored
 
 const key = (h) => `${h.dir}/${h.id}`;
 const mapKey = (h) => `${h.dir}|${h.interval}`;
@@ -126,7 +128,48 @@ function mapList() {
 	return list.filter((h) => mapKey(h) === mk && !isFragment(h) && (showDrills || !isDrill(h) || picks.includes(h.id)));
 }
 
+// Quick picks that follow the saved recordings on this map: each resolves to one recording, or null
+function presets() {
+	const mk = $('map').value;
+	const cands = list.filter((h) => mapKey(h) === mk && !isFragment(h));
+	const own = cands.filter((h) => !isOther(h));
+	const reps = cands.filter((h) => isOther(h));
+	const minBy = (hs, f) => hs.reduce((b, h) => (Number.isFinite(f(h)) && (!b || f(h) < f(b)) ? h : b), null);
+	const fin = (h) => (h.reason === 'finish' && h.runTime ? h.runTime : NaN);
+	// A replay recording can stop before the run's end (its runTime is then short), so only replays that
+	// got within 75 % of the longest replay time count, and the shortest of those wins
+	const longest = Math.max(0, ...reps.map((h) => h.runTime || 0));
+	const topRep = minBy(reps, (h) => (h.runTime >= 0.75 * longest ? h.runTime : NaN));
+	return [
+		{ name: 'Your fastest finish', h: minBy(own, fin), fact: (h) => `${h.runTime.toFixed(2)} s` },
+		{ name: 'Your best jump 1', h: minBy(own, (h) => (h.j1Land == null ? NaN : -h.j1Land)), fact: (h) => `lands ${h.j1Land.toFixed(0)} u/s` },
+		{ name: 'Top replay', h: topRep, fact: (h) => `${h.player || 'unknown player'}${h.runTime ? ` · ${h.runTime.toFixed(2)} s` : ''}` }
+	];
+}
+
+// Quick pick buttons: click adds the recording (or takes it out again when it is picked)
+function showPresets() {
+	const box = $('presets');
+	box.replaceChildren();
+	for (const p of presets()) {
+		const b = document.createElement('button');
+		const at = p.h ? picks.indexOf(p.h.id) : -1;
+		b.textContent = p.h ? `${p.name}: ${p.fact(p.h)}` : `${p.name}: none saved`;
+		b.disabled = !p.h || (at < 0 && picks.length >= MAX_PICKS);
+		if (at >= 0) {
+			b.classList.add('on');
+			b.style.borderColor = COLORS[at];
+		}
+		b.onclick = () => {
+			picks = at >= 0 ? picks.filter((x) => x !== p.h.id) : [...picks, p.h.id];
+			changed();
+		};
+		box.append(b);
+	}
+}
+
 function showPicker() {
+	showPresets();
 	const box = $('pick-list');
 	box.replaceChildren();
 	const hs = mapList();
@@ -268,7 +311,8 @@ function colHead(r) {
 	return el;
 }
 
-// rows: [{ name, tip, vals: [text], nums: [number], best: 'max' | 'min' | 'one' | null }] or { group }
+// rows: [{ name, row, vals: [text or Node], nums: [number], best: 'max' | 'min' | target number, na: [bool], naWhy: [text] }]
+// or { group }. row (runrows.js) gives the hover tip
 function table(rows) {
 	const t = document.createElement('table');
 	t.className = 'cmp';
@@ -291,11 +335,15 @@ function table(rows) {
 			continue;
 		}
 		th.textContent = row.name;
-		if (row.tip) th.title = row.tip;
+		if (row.row && (row.row.desc || row.row.tip)) {
+			th.classList.add('tipped');
+			th.onmouseenter = () => showRsTip(th, row.row);
+			th.onmouseleave = hideRsTip;
+		}
 		tr.append(th);
 		let bi = -1;
 		if (row.best && row.nums) {
-			const score = (v) => (row.best === 'max' ? v : row.best === 'min' ? -v : -Math.abs(v - 1));
+			const score = (v) => (row.best === 'max' ? v : row.best === 'min' ? -v : -Math.abs(v - row.best));
 			const ok = row.nums.map((v, i) => [v, i]).filter(([v]) => Number.isFinite(v));
 			if (ok.length > 1 && new Set(ok.map(([v]) => v)).size > 1) bi = ok.reduce((b, c) => (score(c[0]) > score(b[0]) ? c : b))[1];
 		}
@@ -310,7 +358,10 @@ function table(rows) {
 			}
 			if (v instanceof Node) td.append(v);
 			else td.append(v);
-			if (row.na && row.na[i]) td.classList.add('na');
+			if (row.na && row.na[i]) {
+				td.classList.add('na');
+				if (row.naWhy) td.title = row.naWhy[i];
+			}
 		});
 	}
 	return t;
@@ -328,87 +379,57 @@ function cell(main, sub) {
 	return s;
 }
 
+// The run stat rows of the main page (runrows.js), one column per recording. Each row's best value
+// gets a star; rows without a better direction are not ranked
 function showStats() {
 	const box = $('stats-body');
 	box.replaceChildren();
+	hideRsTip(); // its row is about to be replaced
 	if (shown.length < 2) {
 		box.className = 'muted';
 		box.textContent = shown.length ? 'Pick at least one more recording.' : 'Pick at least 2 recordings.';
 		return;
 	}
 	box.className = '';
-	const S = shown.map((r) => r.stats);
-	const H = shown.map((r) => r.head);
-	const finished = H.map((h) => h.reason === 'finish');
-	const rows = [
-		{ group: 'Run' },
-		{ name: 'End', vals: H.map(endText), nums: H.map((h, i) => (finished[i] ? h.runTime : NaN)), best: 'min' },
-		{ name: 'Jumps landed', tip: 'Jumps from jump 1 on that landed before the run end', vals: S.map((s) => `${s.landed} of ${s.jumps}`) },
-		{ name: 'Missed ticks', tip: 'Ticks the HUD missed inside the run', vals: shown.map((r) => String(runGaps(r.head, r.d))) },
-		{ group: 'Strafing (jumps 1+)' },
-		{
-			name: 'Gain %',
-			tip: 'Sum of gain over sum of ideal gain, over every jump from jump 1 on (same sum as the jump strip)',
-			vals: S.map((s, i) => cell(`${f(s.gainPct)} %`, shown[i].d.derived ? 'rebuilt from speed' : '')),
-			nums: S.map((s) => s.gainPct),
-			best: 'max'
+	const ctx = {
+		cms: (r, deg) => {
+			const m = mouseFor(r.head, mouseNow, dpi);
+			return m && Number.isFinite(deg) ? ` · ${cmPerSec(deg, r.head.interval, m).toFixed(1)} cm/s` : '';
 		},
-		{
-			name: 'CS:S gain (SSJ)',
-			tip: 'Gain % the way the CS:S SSJ plugin shows it: each tick scores how square the move is to the velocity, (30 - |p|) / 30, averaged over the ticks of jumps 1+. Taken from the velocity change, so replays are exact too',
-			vals: S.map((s) => `${f(s.ssjPct)} %`),
-			nums: S.map((s) => s.ssjPct),
-			best: 'max'
-		},
-		{
-			name: 'Sync (keys vs turn)',
-			tip: 'Share of strafing ticks where A or D alone matches the turn side. +left/+right ticks are left out. Keys are shifted by the lag that matches best (replay keys run ahead of the angles). Not the game\'s own sync number.',
-			vals: S.map((s, i) => cell(`${f(s.sync, 1)} %`, `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${isOther(shown[i].head) ? ' · approximate' : ''}`)),
-			nums: S.map((s) => s.sync),
-			best: 'max'
-		},
-		{
-			name: 'Angle (yawRatio)',
-			tip: 'Median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out). 1 = optimal, below = turning too slowly',
-			vals: S.map((s, i) => cell(f(s.angle), shown[i].d.derived ? 'rebuilt from speed' : '')),
-			nums: S.map((s) => s.angle),
-			best: 'one'
-		},
-		{ name: 'Strafes per jump', tip: 'Turns to one side per landed jump', vals: S.map((s) => f(s.strafesPerJump, 1)) },
-		{ name: 'Air time turning', tip: 'Strafing ticks with a turn of more than 0.3°/tick', vals: S.map((s) => `${f(s.turnPct, 1)} %`), nums: S.map((s) => s.turnPct), best: 'max' },
-		{ group: 'Jump 1' },
-		{ name: 'Takeoff', vals: S.map((s) => (s.j1 ? `${f(s.j1.takeoff, 1)} u/s` : '–')), nums: S.map((s) => (s.j1 ? s.j1.takeoff : NaN)), best: 'max' },
-		{
-			name: 'Landing',
-			vals: S.map((s) => (s.j1 && s.j1.landed ? `${f(s.j1.land, 1)} u/s` : 'didn\'t land')),
-			nums: S.map((s) => (s.j1 && s.j1.landed ? s.j1.land : NaN)),
-			best: 'max'
-		},
-		{ name: 'Gain %', vals: S.map((s) => (s.j1 ? `${f(s.j1.pct)} %` : '–')), nums: S.map((s) => (s.j1 ? s.j1.pct : NaN)), best: 'max' },
-		{ group: 'Speed (timer start to run end)' },
-		{ name: 'Max', vals: S.map((s) => `${f(s.speedMax, 0)} u/s`), nums: S.map((s) => s.speedMax), best: 'max' },
-		{ name: 'Average', vals: S.map((s) => `${f(s.speedAvg, 0)} u/s`), nums: S.map((s) => s.speedAvg), best: 'max' },
-		{
-			name: 'At the end',
-			vals: S.map((s, i) => cell(`${f(s.speedEnd, 0)} u/s`, finished[i] ? 'at the finish' : 'at the end of the recording')),
-			nums: S.map((s, i) => (finished[i] ? s.speedEnd : NaN)),
-			best: 'max'
-		},
-		{ group: 'Mistakes' },
-		{
-			name: 'Found',
-			tip: 'Mistake checks from the main page. Replays skip the key checks (their keys run ahead of the angles) and weak takeoff (it compares with your own median).',
-			vals: shown.map((r) => cell(String(r.mistakes.length), isOther(r.head) ? 'key checks and weak takeoff not run' : '')),
-			nums: shown.map((r) => (isOther(r.head) ? NaN : r.mistakes.length)),
-			best: 'min'
-		},
-		{
-			name: 'Speed lost to them',
-			vals: shown.map((r) => `${f(r.mistakes.reduce((a, m) => a + m.lost, 0), 1)} u/s`),
-			nums: shown.map((r) => (isOther(r.head) ? NaN : r.mistakes.reduce((a, m) => a + m.lost, 0))),
-			best: 'min'
+		sw: switchThresholds(loadSettings()),
+		zoomJump: (num) => zoomToJump(num),
+		zoomSwap: (w, r) => {
+			const x = r.gd.x[w.i];
+			if (Number.isFinite(x)) zoomTo(x - 25, x + 25);
 		}
-	];
+	};
+	const rows = [];
+	for (const card of runStatRows(ctx)) {
+		rows.push({ group: card.title });
+		for (const row of card.rows) {
+			const off = shown.map((r) => skipRow(r, row.need));
+			rows.push({
+				name: row.name,
+				row,
+				vals: shown.map((r, i) => {
+					if (off[i]) return '–';
+					const c = cell(row.v(r.stats, r), row.sub ? row.sub(r.stats, r) : '');
+					if (row.click) {
+						c.classList.add('link');
+						c.onclick = () => {
+							row.click(r.stats, r);
+							$('plot').scrollIntoView({ block: 'nearest' });
+						};
+					}
+					return c;
+				}),
+				nums: row.best !== undefined && row.num ? shown.map((r, i) => (off[i] ? NaN : row.num(r.stats, r))) : null,
+				best: row.best,
+				na: off,
+				naWhy: shown.map((r) => skipWhy(r))
+			});
+		}
+	}
 	box.append(table(rows));
 }
 
@@ -468,7 +489,7 @@ function showLegend() {
 		sw.style.background = r.color;
 		const t = document.createElement('span');
 		const al = k === 0 ? 'reference' : r.used === 'jump' ? `per jump (${r.matched} matched)` : $('align').value === 'jump' ? 'timer start (no jump in common)' : 'timer start';
-		t.textContent = `${labelText(r.head)} · ${when(r.head.started)} · ${al}`;
+		t.textContent = `${labelText(r.head)} · ${when(r.head.started)} · ${al}${r.d.derived ? ' · gain and angle rebuilt from speed' : ''}`;
 		s.append(sw, t);
 		box.append(s);
 	}
@@ -1231,13 +1252,21 @@ $('show-drills').onchange = () => {
 	showPicker();
 };
 new ResizeObserver(() => draw()).observe($('plot'));
+addEventListener('scroll', hideRsTip, { passive: true });
 
 const es = new EventSource('/api/events');
 es.onopen = () => $('live').classList.remove('off');
 es.onerror = () => $('live').classList.add('off');
 es.addEventListener('attempt', loadList);
 
-loadList().then(() => {
+Promise.all([
+	loadList(),
+	fetch('/api/mouse')
+		.then((r) => r.json())
+		.then((v) => (mouseNow = v))
+		.catch(() => {})
+]).then(() => {
+	dpi = loadDpi() ?? dpiFromHeads(list);
 	// #<map>/<id>,<id>,...: the map comes from the first id that is still saved
 	const [dir, ids] = location.hash.slice(1).split('/');
 	const want = (ids || '').split(',').filter(Boolean);

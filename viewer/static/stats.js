@@ -227,6 +227,28 @@ function summarize(head, d, jumps) {
 	const runPct = id > 0 ? (100 * g) / id : NaN;
 	for (const j of run) swaps.push(...swapsOf(d, j, endIdx, replay, replay ? lag : 0, Number.isFinite(runPct) ? runPct : DIP_PCT));
 
+	// swap vs strafe gain: gain % pooled over the swap windows (each row once) vs over the strafing rows
+	// outside every window. Windows of swaps with missed ticks are left out of both.
+	const winOf = new Map(); // row -> true for a timed swap's window, false for a gap swap's
+	for (const w of swaps) {
+		const mid = w.gap ? w.i : w.i - (replay ? lag : 0);
+		for (let i = mid - SWAP_HALF; i <= mid + SWAP_HALF; i++) if (w.gap || winOf.get(i) !== false) winOf.set(i, !w.gap);
+	}
+	const inWin = { g: 0, id: 0 };
+	const outWin = { g: 0, id: 0 };
+	for (const j of run) {
+		const [s, e] = jumpRange(j, endIdx);
+		for (let i = s; i < e; i++) {
+			if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
+			const acc = !winOf.has(i) ? outWin : winOf.get(i) ? inWin : null;
+			if (!acc) continue;
+			acc.g += d.gain[i];
+			acc.id += d.ideal[i];
+		}
+	}
+	const swapPct = inWin.id > 0 ? (100 * inWin.g) / inWin.id : NaN;
+	const midPct = outWin.id > 0 ? (100 * outWin.g) / outWin.id : NaN;
+
 	let vmax = 0;
 	let vsum = 0;
 	let vn = 0;
@@ -280,6 +302,8 @@ function summarize(head, d, jumps) {
 		dipLowN: avg(dipped.map((w) => (w.dip > 0 ? 1 : 0))),
 		dipUp: avg(dipped.map((w) => w.dipUp)),
 		dipLow: median(fin(swaps.map((w) => w.dipLow))),
+		swapPct,
+		midPct,
 		swapLost,
 		swapLostShare: lost > 0 ? (100 * swapLost) / lost : NaN,
 		swapsTimed: timed.length,

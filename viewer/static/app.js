@@ -25,7 +25,6 @@ const COL = {
 	pre: '#6c9cff14',
 	post: '#ff5c5c12',
 	hover: '#ffffffcc',
-	ghost: '#ff79c6'
 };
 const GUTTER = 128; // lane titles and y labels
 const RIGHT_PAD = 12;
@@ -68,10 +67,6 @@ let mouseNow = null; // the game's sensitivity and m_yaw now (/api/mouse), for a
 let dpi = null; // mouse DPI typed in (mouse.js), or pre-filled from what Momentum stored
 let pathFit = null; // { s, ox, oy, r0, r1 }: how the last path drawing maps world units to pixels
 let pathView = null; // { s, cx, cy }: zoomed/panned path (scale, world centre); null = fit to pathRange()
-let ghost = null; // { key, head, d, jumps, gd, order, mode, matched, how, path }: the comparison drawn dashed pink
-const ghostCache = new Map(); // "<map>/<id>" -> { head, d, jumps, path }
-const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
-const ALIGN_KEY = 'strafe-review-align';
 const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
 const FILTERS_KEY = 'strafe-review-filters'; // { map, tick, style, result, tag }: "" = all
@@ -183,15 +178,6 @@ async function loadList() {
 	fillTagList();
 	renderList();
 	findMistakes(); // the takeoff baseline comes from the list
-	if (cur) {
-		fillCompare();
-		const h = choiceHead();
-		if ((h ? `${h.dir}/${h.id}` : null) !== (ghost ? ghost.key : null)) {
-			await setGhostSafe();
-			showHead();
-			draw();
-		}
-	}
 }
 
 function renderList() {
@@ -397,139 +383,11 @@ async function open(dir, id) {
 	showCm360();
 	hoverIdx = -1;
 	selMistake = null;
-	fillCompare();
-	await setGhostSafe();
 	showHead();
 	showMeta();
 	renderList(); // lists it even when the filters or the drill toggle hide it
 	findMistakes();
 	whole();
-}
-
-// ---------- compare (ghost) ----------
-
-const mapKey = (h) => `${h.dir}|${h.interval}`;
-
-function loadChoices() {
-	try {
-		return JSON.parse(localStorage.getItem(CMP_KEY)) || {};
-	} catch {
-		return {};
-	}
-}
-
-// Recordings the open attempt can be compared with: same map and tickrate (ticks wouldn't line up
-// otherwise), not itself, no replay fragments
-function candidates() {
-	if (!cur) return [];
-	const k = mapKey(cur.head);
-	return list.filter((h) => mapKey(h) === k && h.id !== cur.head.id && !isFragment(h));
-}
-
-// The picks that follow the saved attempts: each resolves to one recording, or null
-function presets(cands) {
-	const own = cands.filter((h) => !isOther(h));
-	const reps = cands.filter((h) => isOther(h));
-	const minBy = (hs, f) => hs.reduce((b, h) => (Number.isFinite(f(h)) && (!b || f(h) < f(b)) ? h : b), null);
-	const fin = (h) => (h.reason === 'finish' && h.runTime ? h.runTime : NaN);
-	// A replay recording can stop before the run's end (its runTime is then short), so only replays that
-	// got within 75 % of the longest replay time count, and the shortest of those wins
-	const longest = Math.max(0, ...reps.map((h) => h.runTime || 0));
-	const topRep = minBy(reps, (h) => (h.runTime >= 0.75 * longest ? h.runTime : NaN));
-	return [
-		{ id: 'p:fastest', name: 'Your fastest finish', h: minBy(own, fin), fact: (h) => `${h.runTime.toFixed(2)} s` },
-		{ id: 'p:bestj1', name: 'Your best jump 1', h: minBy(own, (h) => (h.j1Land == null ? NaN : -h.j1Land)), fact: (h) => `lands ${h.j1Land.toFixed(0)} u/s` },
-		{ id: 'p:replay', name: 'Top replay', h: topRep, fact: (h) => `${h.player || 'unknown player'}${h.runTime ? ` · ${h.runTime.toFixed(2)} s` : ''}` }
-	];
-}
-
-function candText(h) {
-	const kind = isDrill(h) ? `Drill · ${h.landed} jump${h.landed === 1 ? '' : 's'}` : labelText(h);
-	const end = h.reason === 'finish' && h.runTime ? `${h.runTime.toFixed(2)} s` : REASONS[h.reason] || h.reason || '?';
-	const j1 = h.j1Land == null ? '' : ` · jump 1 lands ${h.j1Land.toFixed(0)}`;
-	return `${kind} · ${when(h.started)} · ${end}${j1}`;
-}
-
-function fillCompare() {
-	const sel = $('cmp-sel');
-	sel.replaceChildren(new Option('None', 'none'));
-	if (!cur) return;
-	const cands = candidates();
-	for (const p of presets(cands)) {
-		const o = new Option(p.h ? `${p.name}: ${p.fact(p.h)}` : `${p.name}: none saved`, p.id);
-		o.disabled = !p.h;
-		sel.append(o);
-	}
-	const grp = document.createElement('optgroup');
-	grp.label = 'Pick one';
-	for (const h of cands) grp.append(new Option(candText(h), `id:${h.id}`));
-	sel.append(grp);
-	const want = loadChoices()[mapKey(cur.head)] || 'none';
-	sel.value = [...sel.options].some((o) => o.value === want && !o.disabled) ? want : 'none';
-}
-
-// The recording the picker points at, or null
-function choiceHead() {
-	const v = $('cmp-sel').value;
-	const cands = candidates();
-	if (v.startsWith('id:')) return cands.find((h) => h.id === v.slice(3)) || null;
-	const p = presets(cands).find((x) => x.id === v);
-	return p ? p.h : null;
-}
-
-async function setGhost() {
-	const h = cur && choiceHead();
-	if (!h) {
-		ghost = null;
-		return;
-	}
-	const key = `${h.dir}/${h.id}`;
-	let g = ghostCache.get(key);
-	if (!g) {
-		const res = await fetch(`/api/attempt/${encodeURIComponent(h.dir)}/${encodeURIComponent(h.id)}`);
-		if (!res.ok) {
-			ghost = null;
-			return;
-		}
-		const a = await res.json();
-		a.dir = h.dir;
-		const d = parse(a);
-		const jumps = findJumps(d, a.preRows).jumps;
-		// from the recording's own rows: the aligned copy's gaps would bend the path
-		g = { head: a, d, jumps, path: recordingPath(a, d, jumps, runEnd(a, d)), stats: summarize(a, d, jumps) };
-		ghostCache.set(key, g);
-	}
-	const al = alignGhost(cur, g, $('align').value);
-	const gd = Object.assign({}, g.d, { x: al.x, gap: al.gap });
-	const order = [];
-	for (let i = 0; i < gd.n; i++) if (Number.isFinite(gd.x[i])) order.push(i);
-	const v = $('cmp-sel').value;
-	const how = v.startsWith('p:') ? presets(candidates()).find((p) => p.id === v).name : 'picked';
-	// the path in the open attempt's turn, so both share one frame
-	const path = turnPath(g.path, cur.path.turn);
-	ghost = { key, head: g.head, d: g.d, jumps: g.jumps, gd, order, mode: al.mode, matched: al.matched, how, path, stats: g.stats, ownPath: g.path };
-}
-
-// A ghost that fails to load must not stop the open attempt from showing
-async function setGhostSafe() {
-	try {
-		await setGhost();
-	} catch (e) {
-		console.error('ghost not loaded', e);
-		ghost = null;
-	}
-}
-
-async function compareChanged() {
-	if (!cur) return;
-	const ch = loadChoices();
-	ch[mapKey(cur.head)] = $('cmp-sel').value;
-	localStorage.setItem(CMP_KEY, JSON.stringify(ch));
-	localStorage.setItem(ALIGN_KEY, $('align').value);
-	await setGhostSafe();
-	showHead();
-	showRunStats();
-	draw();
 }
 
 // ---------- mistakes ----------
@@ -683,174 +541,13 @@ function showHead() {
 	};
 	if (cur.d.coarse) note('replay', 'Speed updates every few ticks (spectated live): gain per jump only, checks off');
 	else if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
-	$('align-hint').hidden = !ghost; // only says something when there is a ghost to line up
-	if (ghost) {
-		const gh = ghost.head;
-		const end = gh.reason === 'finish' && gh.runTime ? `${gh.runTime.toFixed(2)} s` : REASONS[gh.reason] || gh.reason || '?';
-		const al =
-			ghost.mode === 'jump'
-				? `aligned per jump (${ghost.matched} matched)`
-				: $('align').value === 'jump'
-					? 'aligned on timer start (no jump in common)'
-					: 'aligned on timer start';
-		note('ghost', `Ghost (dashed pink): ${labelText(gh)} · ${ghost.how} · ${when(gh.started)} · ${end} · ${al}`);
-		if (ghost.d.derived && !cur.d.derived) note('ghost', 'Ghost gain and angle rebuilt from speed');
-		if (isOther(gh)) note('ghost', 'Ghost keys not drawn: replay keys run ahead of the angles');
-	}
 }
 
 // ---------- run stats ----------
 
-// Whole-run numbers above the graph, from summarize() (stats.js) so the compare page agrees. With a
-// ghost, its value sits next to each one in pink (not for rows with ghost: false). need: 'tick' rows are left out for a spectated live
-// run (speed only every few ticks), 'keys' rows for other players' recordings (their keys run ahead).
-function runStatRows() {
-	const n = (v, k = 1, unit = '') => (Number.isFinite(v) ? `${v.toFixed(k)}${unit}` : '–');
-	const endOf = (h) => (h.reason === 'finish' && h.runTime ? `${h.runTime.toFixed(3)} s` : REASONS[h.reason] || h.reason || '?');
-	const jumpOf = (r, j) => (j ? `jump ${j.num} · ${n(j.pct, 2, ' %')}` : '–');
-	const swapOf = (r, w) => (w ? `jump ${w.jump} swap ${w.k}${w.btn ? ' (+left/right)' : ''} · ${n(w.lost, 1, ' u/s')}` : '–');
-	const zoomJump = (num) => {
-		const j = cur.jumps.find((jj) => jj.num === num);
-		if (j) zoomTo(j);
-	};
-	// early/late by the switch check's current thresholds, so the counts match the Mistakes list
-	const sc = loadSettings().switch || {};
-	const sw = Object.fromEntries(Object.entries(CHECKS.find((c) => c.id === 'switch').params).map(([k, p]) => [k, sc[k] === undefined ? p.v : sc[k]]));
-	const cms = (r, deg) => {
-		const m = mouseFor(r.head, mouseNow, dpi);
-		return m && Number.isFinite(deg) ? ` · ${cmPerSec(deg, r.head.interval, m).toFixed(1)} cm/s` : '';
-	};
-	return [
-		{
-			title: 'Run',
-			rows: [
-				{ name: 'End', desc: 'Your finish time, or how the attempt stopped.', tip: 'Finish time, or how the attempt ended', v: (s, r) => endOf(r.head) },
-				{ name: 'Jumps landed', desc: 'Jumps from jump 1 that touched ground again before the run ended.', tip: 'Jumps from jump 1 on that landed before the run end', v: (s) => `${s.landed} of ${s.jumps}` },
-				{ name: 'Missed ticks', desc: 'Ticks the recorder didn\'t see (game frames slower than ticks). Their numbers are guessed or left out.', tip: 'Ticks the HUD missed inside the run (frames slower than ticks)', v: (s, r) => String(runGaps(r.head, r.d)) },
-				{ name: 'Distance', desc: 'How far you travelled (horizontal only). Shorter = tighter line.', tip: 'Horizontal distance from the timer start to the run end, built up from speed (teleports add nothing)', v: (s, r) => `${Math.round(pathDistance(r.path, Math.min(r.head.preRows || 0, r.d.n - 1), s.endIdx))} u` },
-				{ name: 'Air time', desc: 'Share of the run spent in the air. Close to 100 % = clean bhops.', tip: 'Share of the run ticks in the air (vz not 0)', v: (s) => n(s.airPct, 1, ' %'), need: 'tick' }
-			]
-		},
-		{
-			title: 'Gain',
-			rows: [
-				{ name: 'Gain %', desc: 'How much of the speed you could have gained you actually gained. 100 % = perfect strafing.', tip: 'Sum of gain over sum of ideal gain, every jump from jump 1 on (as the jump strip)', v: (s) => n(s.gainPct, 2, ' %') },
-				{
-					name: 'CS:S gain (SSJ)',
-					desc: 'Gain % the way CS:S servers show it in chat (the SSJ plugin). It scores how square your move is to your speed each tick, so it reads lower than Momentum\'s gain %. Top replays about 80-88 %.',
-					tip: 'Average over every tick of jumps 1+ of (30 - |p|) / 30 (0 when p is 30+), p = previous velocity along the move direction, taken from the velocity change. SSJ\'s wall-touch rule is left out. Per jump in the jump strip',
-					v: (s) => n(s.ssjPct, 2, ' %'),
-					need: 'tick'
-				},
-				{ name: 'Speed lost', desc: 'Speed you would have had on top with perfect strafing, added up over the run.', tip: 'Sum of ideal - gain over every strafing tick (air, 100+ u/s, no wall hit): speed you could have had', v: (s) => n(s.lost, 0, ' u/s'), need: 'tick' },
-				{ name: 'Best jump', desc: 'Your jump with the highest gain %. Click to see it.', tip: 'Landed jump with the highest gain %', v: (s, r) => jumpOf(r, s.bestJump), click: (s) => s.bestJump && zoomJump(s.bestJump.num) },
-				{ name: 'Worst jump', desc: 'Your jump with the lowest gain %. Click to see it.', tip: 'Landed jump with the lowest gain %', v: (s, r) => jumpOf(r, s.worstJump), click: (s) => s.worstJump && zoomJump(s.worstJump.num) },
-				{ name: 'Spread', desc: 'How much gain % changes from jump to jump. Lower = more consistent.', tip: 'Standard deviation of the landed jumps\' gain %: lower = more even jump to jump', v: (s) => n(s.spread, 1, ' %') },
-				{ name: 'Left / right', desc: 'Gain % while turning left vs turning right. A big difference means one side is weaker.', tip: 'Gain % on ticks turning left (A side) and turning right (D side)', v: (s) => `${n(s.leftPct, 1)} / ${n(s.rightPct, 1)} %`, need: 'tick' }
-			]
-		},
-		{
-			title: 'Speed',
-			rows: [
-				{ name: 'Max', desc: 'Top horizontal speed in the run.', v: (s) => n(s.speedMax, 0, ' u/s') },
-				{ name: 'Average', desc: 'Average horizontal speed over the run.', tip: 'Horizontal speed averaged over the run ticks', v: (s) => n(s.speedAvg, 0, ' u/s') },
-				{ name: 'At the end', desc: 'Speed at the finish (or where the recording stops).', tip: 'At the finish, or at the end of the recording', v: (s) => n(s.speedEnd, 0, ' u/s') },
-				{ name: 'Jump 1 takeoff', desc: 'Speed leaving the start zone ground: how good the prestrafe was.', v: (s) => (s.j1 ? n(s.j1.takeoff, 1, ' u/s') : '–') },
-				{ name: 'Jump 1 landing', desc: 'Speed when jump 1 lands. Takeoff + what you gained on jump 1.', v: (s) => (s.j1 && s.j1.landed ? n(s.j1.land, 1, ' u/s') : '–') },
-				{ name: 'Jump 1 gain', desc: 'Gain % on jump 1 alone, and the CS:S (SSJ) gain for it. Click to see it.', v: (s) => (s.j1 ? `${n(s.j1.pct, 2, ' %')}${Number.isFinite(s.j1.ssj) ? ` · CS:S ${n(s.j1.ssj, 1, ' %')}` : ''}` : '–'), click: () => zoomJump(1) }
-			]
-		},
-		{
-			title: 'Turning',
-			rows: [
-				{ name: 'Angle (yawRatio)', desc: 'How fast you turn compared with the best turn speed, mid-strafe. 1 = perfect, below = too slow, above = too fast.', tip: 'Median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out). 1 = optimal', v: (s) => n(s.angle, 2), need: 'tick' },
-				{ name: 'In optimal band', desc: 'Mid-strafe ticks where your turn speed is within 15 % of perfect. Higher = better.', tip: `Strafe-middle ticks at yawRatio ${BAND_LO}-${BAND_HI} (the yaw lane's band)`, v: (s) => n(s.inBand, 1, ' %'), need: 'tick' },
-				{ name: 'Too slow / too fast', desc: 'Mid-strafe ticks turning too slowly (under 85 %) / too quickly (over 115 %).', tip: `Strafe-middle ticks under ${BAND_LO} / over ${BAND_HI}`, v: (s) => `${n(s.tooSlow, 1)} / ${n(s.tooFast, 1)} %`, need: 'tick' },
-				{ name: 'Turn speed', desc: 'Your usual mid-strafe turn speed, in degrees per tick and mouse cm per second.', tip: 'Median turn speed of strafe middles (5-tick average), and in mouse terms when the DPI is set (a replay at your sens)', v: (s, r) => `${n(s.yawMid, 2, '°/t')}${cms(r, s.yawMid)}`, need: 'tick' },
-				{ name: 'Strafes per jump', desc: 'How many separate turns (one side each) you make per jump.', tip: 'Turns to one side per landed jump', v: (s) => n(s.strafesPerJump, 1), need: 'tick' },
-				{ name: 'Strafe length', desc: 'Usual length of one strafe (one turn to one side), in ticks.', tip: 'Median ticks of one strafe (one turn to one side)', v: (s) => n(s.strafeLen, 0, ' t'), need: 'tick' },
-				{ name: 'Air time turning', desc: 'Share of the air time you are actually turning. Not turning = gaining almost nothing.', tip: 'Strafing ticks with a turn of more than 0.3°/tick', v: (s) => n(s.turnPct, 1, ' %'), need: 'tick' },
-				{ name: '+left/+right ticks', desc: 'Ticks turned with the +left/+right keys (fixed speed), e.g. your prestrafe. Left out of the turning numbers.', tip: 'Strafing ticks with a turn button held (fixed cl_yawspeed turn, left out of the angle numbers)', v: (s) => String(s.btnTicks), need: 'tick' }
-			]
-		},
-		{
-			title: 'Swaps (strafe direction changes)',
-			rows: [
-				{ name: 'Swaps', desc: 'Times you switch from turning one way to the other inside a jump.', tip: 'Strafe direction changes inside jumps, without missed ticks near them', v: (s) => String(s.swapsTimed), need: 'tick' },
-				{ name: 'Swap time', desc: 'How long a switch takes: ticks from turning at full speed one way to full speed the other way. Shorter = better (top replays about 4).', tip: 'Median ticks from the last tick turning at 85 %+ of optimal one way to the first one the other way', v: (s) => n(s.swapTime, 1, ' t'), need: 'tick' },
-				{ name: 'Swap efficiency', desc: 'Gain % (same meaning as above) over just the 7 ticks around a switch. Everyone loses some here; low = you lose a lot while changing direction (top replays about 85 %).', tip: "Median gain % of ideal over the 7 ticks centred on each reversal. Other players' recordings: centred their key lag earlier, because their view angles trail their movement", v: (s) => n(s.swapEff, 1, ' %'), need: 'tick' },
-				{
-					name: 'Gain dip',
-					desc: 'How long your gain stays below this run\'s average gain % at a switch, split into dropping (before the worst tick), the worst tick itself and recovering (after it). Averages, so the parts add up. Shorter = faster swap.',
-					tip: "Per swap: the lowest gain % tick within 4 ticks of the swap window's centre, then the ticks in a row under the run's gain % (Gain card) before it (down) and after it (up); dip = down + 1 + up, 0 when no tick is under it. Averages over the swaps: down + low + up = total, where low is the share of swaps with a dip at all",
-					v: (s) => `${n(s.dip, 1, ' t')} (${n(s.dipDown, 1)} down · ${n(s.dipLowN, 1)} low · ${n(s.dipUp, 1)} up)`,
-					need: 'tick'
-				},
-				{
-					name: 'Dip low point',
-					desc: 'Gain % on the worst tick of a switch. 0 % = no speed gained that tick; below 0 = losing speed (top replays about 15 %).',
-					tip: 'Median of each swap\'s lowest per-tick gain % (gain / ideal) near the reversal',
-					v: (s) => n(s.dipLow, 0, ' %'),
-					need: 'tick'
-				},
-				{ name: 'Lost at swaps', desc: 'Speed lost in those few ticks around switches, and how much of all your lost speed that is.', tip: 'Ideal - gain summed over those 7-tick windows, and its share of all speed lost', v: (s) => `${n(s.swapLost, 0, ' u/s')} · ${n(s.swapLostShare, 0, ' %')}`, need: 'tick' },
-				{ name: 'Peak after swap', desc: 'How fast you turn just after a switch compared with perfect. 100 % = perfect; under = slow to get going, over = jerking too hard.', tip: `Median of the fastest 2-tick turn in the 6 ticks after each reversal, vs optimal (100 % = optimal). +left/+right swaps not judged`, v: (s) => n(100 * s.peak, 0, ' %'), need: 'tick' },
-				{ name: 'Over / undershoot', desc: 'Switches where you turn too hard right after (over 115 %) / too gently (under 85 %).', tip: `Swaps whose peak is over ${BAND_HI * 100} % / under ${BAND_LO * 100} % of optimal, of the swaps judged`, v: (s) => `${s.over} / ${s.under} of ${s.judged}`, need: 'tick' },
-				{ name: 'Worst swap', desc: 'The switch where you lost the most speed. Click to see it.', tip: 'The swap with the most speed lost in its 7-tick window. (+left/right): a turn button was held, e.g. the prestrafe into jump 1', v: (s, r) => swapOf(r, s.worstSwap), click: (s) => s.worstSwap && zoomTo({ x0: cur.d.x[s.worstSwap.i] - 25, x1: cur.d.x[s.worstSwap.i] + 25 }), need: 'tick' }
-			]
-		},
-		{
-			title: 'Keys',
-			rows: [
-				{
-					name: 'Sync (keys vs turn)', desc: 'Share of turning ticks where the right strafe key (A or D alone) is held. Higher = better.',
-					tip: "Strafing ticks where A or D alone matches the turn side, keys shifted by the best lag. +left/+right ticks out. Not the game's sync number",
-					v: (s, r) => `${n(s.sync, 1, ' %')}${isOther(r.head) ? ' approx.' : ''}`,
-					need: 'tick'
-				},
-				{ name: 'Key lag', desc: 'How many ticks your keys come before your mouse turn. Your runs: about 1.', tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7', v: (s) => `${s.lag} t`, need: 'tick' },
-				{ name: 'Switch vs reversal', desc: 'When you press the new key compared with when your mouse changes direction. Target -1 (one tick before).', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), need: 'keys' },
-				{ name: 'Switch on target', desc: 'Key switches 0-2 ticks before the mouse changes direction.', tip: 'Switches 0-2 ticks before the reversal', v: (s) => n(s.keyOnTarget, 0, ' %'), need: 'keys' },
-				{
-					name: 'Early / late', desc: 'Key switches too early / too late, by the Check settings thresholds (same as the Mistakes list).',
-					tip: `Switches ${sw.early}+ ticks before / ${sw.late}+ ticks after the reversal (the switch check's thresholds in Check settings)`,
-					v: (s) => `${s.swaps.filter((w) => w.keyOff !== null && w.keyOff <= -sw.early).length} / ${s.swaps.filter((w) => w.keyOff !== null && w.keyOff >= sw.late).length}`,
-					need: 'keys'
-				},
-				{ name: 'No key while turning', desc: 'Turning ticks with no strafe key (or both). Those ticks gain nothing.', tip: 'Turning strafing ticks with neither or both of A and D (+left/+right ticks out)', v: (s) => n(s.noKeyPct, 1, ' %'), need: 'keys' },
-				{ name: 'W in the air', desc: 'Air ticks with W held. W while strafing usually costs gain.', tip: 'Strafing ticks with W held', v: (s) => n(s.wAirPct, 1, ' %'), need: 'keys' }
-			]
-		},
-		{
-			title: 'Mistakes',
-			rows: [
-				{ name: 'Found', desc: 'Mistakes found by the checks (listed below the path).', tip: 'Mistake checks with the current settings (list below the path)', v: (s, r) => (r.mistakes ? String(r.mistakes.length) : '–'), need: 'tick', ghost: false },
-				{ name: 'Speed lost to them', desc: 'Speed lost on the ticks of those mistakes.', v: (s, r) => (r.mistakes ? n(r.mistakes.reduce((a, m) => a + m.lost, 0), 1, ' u/s') : '–'), need: 'tick', ghost: false }
-			]
-		}
-	];
-}
-
-// Hover tip for a run stat: the plain description, then how it's measured. Shows at once (a title
-// attribute waits about a second) and sits under the row.
-function showRsTip(el, row) {
-	const t = $('rs-tip');
-	t.replaceChildren();
-	if (row.desc) t.append(Object.assign(document.createElement('div'), { textContent: row.desc }));
-	if (row.tip) t.append(Object.assign(document.createElement('div'), { className: 'rs-tip-how', textContent: `Measured: ${row.tip}` }));
-	t.hidden = false;
-	const r = el.getBoundingClientRect();
-	const w = t.offsetWidth;
-	t.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
-	const below = r.bottom + 4;
-	t.style.top = `${below + t.offsetHeight > innerHeight - 8 ? r.top - t.offsetHeight - 4 : below}px`;
-}
-
-function hideRsTip() {
-	$('rs-tip').hidden = true;
-}
 $('main').addEventListener('scroll', hideRsTip, { passive: true });
 
+// Whole-run numbers above the graph: the rows in runrows.js, shared with the compare page
 function showRunStats() {
 	const sec = $('run-stats');
 	sec.hidden = !cur;
@@ -858,26 +555,33 @@ function showRunStats() {
 	const box = $('rs-body');
 	hideRsTip(); // its row is about to be replaced
 	box.replaceChildren();
-	box.classList.toggle('with-ghost', !!ghost);
 	const me = { head: cur.head, d: cur.d, path: cur.path, mistakes: cur.mistakes };
-	const gh = ghost && { head: ghost.head, d: ghost.d, path: ghost.ownPath, mistakes: null };
-	const skip = (r, need) => (need === 'tick' && r.d.coarse) || (need === 'keys' && (r.d.coarse || isOther(r.head)));
-	const why = (r) => (r.d.coarse ? 'spectated: speed every few ticks' : 'not run (replay keys run ahead)');
 	const notes = [];
 	if (cur.d.coarse) notes.push("Spectated live run: speed only updates every few ticks, so only run, gain and speed numbers are shown.");
 	else if (isOther(cur.head)) notes.push("Other player's recording: key numbers are left out (replay keys run ahead of the angles).");
-	if (gh) notes.push(`Pink: the Compare recording (${labelText(gh.head)}).`);
 	$('rs-note').textContent = notes.join(' ');
-	for (const card of runStatRows()) {
+	const ctx = {
+		cms: (r, deg) => {
+			const m = mouseFor(r.head, mouseNow, dpi);
+			return m && Number.isFinite(deg) ? ` · ${cmPerSec(deg, r.head.interval, m).toFixed(1)} cm/s` : '';
+		},
+		sw: switchThresholds(loadSettings()),
+		zoomJump: (num) => {
+			const j = cur.jumps.find((jj) => jj.num === num);
+			if (j) zoomTo(j);
+		},
+		zoomSwap: (w) => zoomTo({ x0: cur.d.x[w.i] - 25, x1: cur.d.x[w.i] + 25 })
+	};
+	for (const card of runStatRows(ctx)) {
 		const c = document.createElement('div');
 		c.className = 'rs-card';
 		const h = document.createElement('h3');
 		h.textContent = card.title;
 		c.append(h);
-		if (card.rows.every((row) => skip(me, row.need)) && !(gh && card.rows.some((row) => !skip(gh, row.need)))) {
+		if (card.rows.every((row) => skipRow(me, row.need))) {
 			const off = document.createElement('div');
 			off.className = 'rs-off';
-			off.textContent = `Not shown: ${why(me)}`;
+			off.textContent = `Not shown: ${skipWhy(me)}`;
 			c.append(off);
 			box.append(c);
 			continue;
@@ -890,26 +594,20 @@ function showRunStats() {
 			name.textContent = row.name;
 			const val = document.createElement('span');
 			val.className = 'rs-val';
-			if (skip(me, row.need)) {
+			if (skipRow(me, row.need)) {
 				val.textContent = '–';
-				val.title = why(me);
+				val.title = skipWhy(me);
 			} else {
 				val.textContent = row.v(cur.stats, me);
 				if (row.click) {
 					val.classList.add('rs-link');
 					val.onclick = () => {
-						row.click(cur.stats);
+						row.click(cur.stats, me);
 						$('plot').scrollIntoView({ block: 'nearest' });
 					};
 				}
 			}
 			el.append(name, val);
-			if (gh) {
-				const g = document.createElement('span');
-				g.className = 'rs-ghost';
-				g.textContent = skip(gh, row.need) || row.ghost === false ? '–' : row.v(ghost.stats, gh);
-				el.append(g);
-			}
 			if (row.desc || row.tip) {
 				el.onmouseenter = () => showRsTip(el, row);
 				el.onmouseleave = hideRsTip;
@@ -1132,14 +830,6 @@ const air = (d) => (i) => !d.ground[i];
 // Scales come from strafing rows only: in the air at 100+ u/s (falling at near-zero speed has ideal gain near 30)
 const strafingRows = (d) => (i) => !d.ground[i] && d.speed[i] > 100;
 
-// The ghost's line in a lane: dashed, over all its rows (the lane clip drops what is off screen)
-function ghostLine(g, val, Y, ok) {
-	if (!ghost) return;
-	g.setLineDash([6, 4]);
-	line(g, ghost.gd, 0, ghost.gd.n - 1, val, Y, COL.ghost, 1.5, ok && ok(ghost.gd));
-	g.setLineDash([]);
-}
-
 // Yaw speed with its direction (up = left turn, as the drill page): the optimal and its band sit on
 // the side the turn needs, one line per side, so a strafe change is a gap and not a slope
 function yawSigned(g, l, d, i0, i1, hi) {
@@ -1160,7 +850,6 @@ function yawSigned(g, l, d, i0, i1, hi) {
 		g.fillRect(px(d.x[i] - 0.5), Math.min(y1, y2), Math.max(px(d.x[i] + 0.5) - px(d.x[i] - 0.5), 1), Math.abs(y2 - y1));
 	}
 	line(g, d, i0, i1, (i) => d.yawd[i], Y, COL.raw, 1);
-	ghostLine(g, (i) => ghost.gd.yaws[i], Y, air);
 	for (const side of [1, -1]) line(g, d, i0, i1, (i) => side * d.opt[i], Y, COL.opt, 1.5, (i) => d.ideal_key[i] === side);
 	line(g, d, i0, i1, (i) => d.yaws[i], Y, COL.line, 2, air(d));
 	yLabels(l, Y, [hi, hi / 2, 0, -hi / 2, -hi], (v) => v.toFixed(1));
@@ -1181,29 +870,11 @@ const LANE_DRAW = {
 			g.strokeRect(X0 + 1.5, l.y + 4.5, X1 - X0 - 3, l.h - 9);
 			const label = `${j.num ? j.num : 'pre'} · ${Number.isFinite(j.pct) ? j.pct.toFixed(2) : '?'}%`;
 			const withSsj = j.num && Number.isFinite(j.ssj) ? `${label} · CS:S ${j.ssj.toFixed(1)}%` : label;
-			const gj = ghost && j.num ? ghost.jumps.find((x) => x.num === j.num) : null;
-			const full = gj && Number.isFinite(gj.pct) ? `${withSsj} · ghost ${gj.pct.toFixed(2)}%` : withSsj;
-			for (const t of [full, withSsj, label]) {
+			for (const t of [withSsj, label]) {
 				if (g.measureText(t).width >= X1 - X0 - 8) continue;
 				g.fillStyle = COL.text;
 				g.fillText(t, X0 + 6, l.y + l.h / 2 + 4);
 				break;
-			}
-		}
-		// the ghost's jumps: a pink bar along the bottom of the strip, where its air time sits
-		if (ghost) {
-			g.fillStyle = COL.ghost;
-			for (const j of ghost.jumps) {
-				if (!j.num) continue;
-				let a = NaN;
-				let b = NaN;
-				for (let i = j.s; i < j.e; i++) {
-					const x = ghost.gd.x[i];
-					if (!Number.isFinite(x)) continue;
-					if (!Number.isFinite(a)) a = x;
-					b = x;
-				}
-				if (Number.isFinite(a)) g.fillRect(px(a - 0.5) + 1, l.y + l.h - 7, px(b + 0.5) - px(a - 0.5) - 2, 3);
 			}
 		}
 		if (px(0) > GUTTER) {
@@ -1230,7 +901,6 @@ const LANE_DRAW = {
 			g.fillRect(px(d.x[i] - 0.5), Y(o * 1.15), Math.max(px(d.x[i] + 0.5) - px(d.x[i] - 0.5), 1), Y(o * 0.85) - Y(o * 1.15));
 		}
 		line(g, d, i0, i1, (i) => Math.abs(d.yawd[i]), Y, COL.raw, 1);
-		ghostLine(g, (i) => Math.abs(ghost.gd.yaws[i]), Y, air);
 		line(g, d, i0, i1, (i) => d.opt[i], Y, COL.opt, 1.5);
 		line(g, d, i0, i1, (i) => Math.abs(d.yaws[i]), Y, COL.line, 2, air(d));
 		yLabels(l, Y, [0, hi / 2, hi], (v) => v.toFixed(1));
@@ -1249,7 +919,6 @@ const LANE_DRAW = {
 			const y1 = Y(c);
 			g.fillRect(px(d.x[i] - 0.5), Math.min(y0, y1), Math.max(tickPx, 1), Math.abs(y1 - y0));
 		}
-		ghostLine(g, (i) => Math.min(ghost.gd.ratio[i], 2), Y, air);
 		g.strokeStyle = COL.opt;
 		g.lineWidth = 1.5;
 		g.beginPath();
@@ -1299,7 +968,6 @@ const LANE_DRAW = {
 		g.fill();
 		// ideal in light grey, not the usual green: the gain line itself goes red to green
 		line(g, d, i0, i1, (i) => d.ideal[i], Y, COL.idealGain, 1.5, isAir);
-		if (!ghost?.gd.coarse) ghostLine(g, (i) => ghost.gd.gain[i], Y, air);
 		// gain, each tick step coloured by the 5-tick gain % of ideal (the path's colour)
 		const pct = cur.path.pct;
 		g.lineWidth = 2.5;
@@ -1340,24 +1008,11 @@ const LANE_DRAW = {
 		if (want && !(b & want) && !(b & (BIT.LEFT | BIT.RIGHT))) bar(4, COL.bad);
 			if (b & (BIT.LEFT | BIT.RIGHT)) bar(5, COL.turn);
 		}
-		// the ghost's A and D: a thin pink strip along the bottom of those rows (not for replays, whose
-		// keys run 3-7 ticks ahead of the angles)
-		if (ghost && !isOther(ghost.head)) {
-			const gd = ghost.gd;
-			g.fillStyle = COL.ghost;
-			for (const i of ghost.order) {
-				const X = px(gd.x[i] - 0.5);
-				if (X < GUTTER - tickPx || X > base.clientWidth) continue;
-				if (gd.buttons[i] & BIT.MOVELEFT) g.fillRect(X, rowY(1) + rh - 4, w, 2);
-				if (gd.buttons[i] & BIT.MOVERIGHT) g.fillRect(X, rowY(2) + rh - 4, w, 2);
-			}
-		}
 	},
 
 	speed(g, l, d, i0, i1) {
 		const hi = Math.max(50, quantile(d, 0, d.n - 1, (i) => d.speed[i], 0.995) * 1.08);
 		const Y = yMap(l, 0, hi);
-		ghostLine(g, (i) => ghost.gd.speed[i], Y);
 		line(g, d, i0, i1, (i) => d.speed[i], Y, COL.line, 2);
 		g.fillStyle = COL.opt;
 		for (const j of cur.jumps) {
@@ -1443,18 +1098,6 @@ function drawHover() {
 		['ideal', d.ideal_key[i] > 0 ? 'A' : d.ideal_key[i] < 0 ? 'D' : '–']
 	];
 	if (d.gap[i] > 0) fields.push(['missed before', String(d.gap[i])]);
-	if (ghost) {
-		const gd = ghost.gd;
-		const gi = ghostNearest(gd.x, ghost.order, d.x[i], 0.5);
-		const gj = gi < 0 ? null : ghost.jumps.find((jj) => gi >= jj.s && gi < jj.e);
-		const where = gi < 0 ? '' : gd.ground[gi] ? 'ground' : gj ? (gj.num ? `jump ${gj.num}` : 'pre-jump') : 'air';
-		fields.push([
-			'ghost',
-			gi < 0
-				? 'no row here'
-				: `${where} · speed ${f(gd.speed[gi], 1)} · gain ${f(gd.gain[gi], 3)} / ${f(gd.ideal[gi], 3)} · yaw avg ${f(gd.yaws[gi], 2)} · ratio ${f(gd.ratio[gi], 3)}`
-		]);
-	}
 	$('readout').innerHTML = fields.map(([k, v]) => `<span><span class="k">${k}</span> ${v}</span>`).join('');
 }
 
@@ -1504,8 +1147,6 @@ function drawPath() {
 		y1 = Math.max(y1, py[i]);
 	};
 	for (let i = r0; i <= r1; i++) grow(x, y, i);
-	const gIn = ghostInRange(r0, r1);
-	if (ghost) for (let i = 0; i < ghost.d.n; i++) if (gIn(i)) grow(ghost.path.x, ghost.path.y, i);
 	if (!Number.isFinite(x0)) {
 		g.fillText('No path for these ticks.', 12, 22);
 		return;
@@ -1524,11 +1165,9 @@ function drawPath() {
 	$('path-reset').disabled = !pathView;
 	pathFit = { s, ox, oy, r0, r1 };
 	const runDist = pathDistance(cur.path, Math.min(cur.head.preRows || 0, d.n - 1), runEnd(cur.head, d));
-	const ghostDist = ghost ? ` · ghost ${Math.round(pathDistance(ghost.path, Math.min(ghost.head.preRows || 0, ghost.d.n - 1), runEnd(ghost.head, ghost.d)))} units` : '';
-	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units${ghostDist} · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
+	$('path-dist').textContent = `Total distance ${Math.round(runDist)} units · shown ticks ${Math.round(pathDistance(cur.path, r0, r1))} units`;
 	const X = (i) => ox + x[i] * s;
 	const Y = (i) => oy - y[i] * s;
-	if (ghost) drawGhostPath(g, gIn);
 	// one stroke per run of rows with the same colour; rows outside the graph's ticks are dimmed
 	g.lineCap = 'round';
 	g.lineJoin = 'round';
@@ -1568,7 +1207,6 @@ function drawPath() {
 		g.fill();
 		if (shown.length <= 40) g.fillText(String(j.num), X(j.s) + 5, Y(j.s) - 5);
 	}
-	if (ghost) drawGhostMarks(g, gIn);
 	// timer start and run end
 	const ring = (i, col, text) => {
 		if (i < r0 || i > r1 || !Number.isFinite(x[i])) return;
@@ -1593,85 +1231,6 @@ function drawPath() {
 	g.fillStyle = COL.muted;
 	g.font = '11px system-ui, sans-serif';
 	g.fillText(`${unit} units`, 12, H - 18);
-}
-
-// Ghost rows that sit in the graph's ticks (by their aligned tick), or all of them with "Whole path".
-// Rows the per-jump alignment squeezed out have no tick: they are drawn dimmed.
-function ghostInRange(r0, r1) {
-	if (!ghost) return () => false;
-	if ($('path-whole').checked) return () => true;
-	const lo = cur.d.x[r0] - 0.5;
-	const hi = cur.d.x[r1] + 0.5;
-	return (i) => ghost.gd.x[i] >= lo && ghost.gd.x[i] <= hi;
-}
-
-// The ghost's line on the path: solid (dashes hid the gain colour), under the open attempt, coloured by its
-// 5-tick gain % in pink from dark (60 %) to bright (95 %) (a red-green ghost over the red-green path
-// couldn't be read)
-function drawGhostPath(g, gIn) {
-	const { x, y, brk, pct } = ghost.path;
-	const { s, ox, oy } = pathFit;
-	const X = (i) => ox + x[i] * s;
-	const Y = (i) => oy - y[i] * s;
-	g.lineCap = 'round';
-	g.lineJoin = 'round';
-	// one stroke per run of rows with the same colour
-	let run = null;
-	const flush = () => {
-		if (!run) return;
-		g.strokeStyle = run.col;
-		g.globalAlpha = run.dim ? 0.22 : 1;
-		g.lineWidth = run.dim ? 1.5 : 2.2;
-		g.stroke();
-		run = null;
-	};
-	for (let i = 1; i < ghost.d.n; i++) {
-		if (brk[i] || !Number.isFinite(x[i]) || !Number.isFinite(x[i - 1])) {
-			flush();
-			continue;
-		}
-		const col = gainShade(ghost.d.ground[i] ? NaN : pct[i], COL.ghost);
-		const dim = !gIn(i);
-		if (!run || run.col !== col || run.dim !== dim) {
-			flush();
-			run = { col, dim };
-			g.beginPath();
-			g.moveTo(X(i - 1), Y(i - 1));
-		}
-		g.lineTo(X(i), Y(i));
-	}
-	flush();
-	g.globalAlpha = 1;
-}
-
-// The ghost's takeoffs with their jump numbers (pink, left of the dot; the open attempt's sit on the right)
-// and a ring where its run ends. Drawn over the open attempt's path.
-function drawGhostMarks(g, gIn) {
-	const { x, y } = ghost.path;
-	const { s, ox, oy } = pathFit;
-	const X = (i) => ox + x[i] * s;
-	const Y = (i) => oy - y[i] * s;
-	const e = runEnd(ghost.head, ghost.d);
-	const tk = ghost.jumps.filter((j) => j.num && j.s <= e && gIn(j.s) && Number.isFinite(x[j.s]));
-	g.font = '600 11px system-ui, sans-serif';
-	g.fillStyle = COL.ghost;
-	g.textAlign = 'right';
-	for (const j of tk) {
-		g.beginPath();
-		g.arc(X(j.s), Y(j.s), 3, 0, 2 * Math.PI);
-		g.fill();
-		if (tk.length <= 40) g.fillText(String(j.num), X(j.s) - 5, Y(j.s) - 5);
-	}
-	g.textAlign = 'left';
-	if (gIn(e) && Number.isFinite(x[e])) {
-		g.strokeStyle = COL.ghost;
-		g.lineWidth = 2;
-		g.beginPath();
-		g.arc(X(e), Y(e), 6, 0, 2 * Math.PI);
-		g.stroke();
-		// above the ring: the open attempt's end label sits below its own ring, often right next to it
-		g.fillText(ghost.head.reason === 'finish' ? 'ghost finish' : 'ghost end', X(e) + 9, Y(e) - 8);
-	}
 }
 
 // Hover dot with the view direction, and the picked mistake's rows
@@ -1701,23 +1260,6 @@ function drawPathHover() {
 	}
 	const i = hoverIdx;
 	if (i < 0 || !Number.isFinite(x[i])) return;
-	// the ghost's row that the graph pairs with this one
-	const gi = ghost ? ghostNearest(ghost.gd.x, ghost.order, cur.d.x[i], 0.5) : -1;
-	if (gi >= 0 && Number.isFinite(ghost.path.x[gi])) {
-		const gx = ox + ghost.path.x[gi] * s;
-		const gy = oy - ghost.path.y[gi] * s;
-		const ga = (ghost.d.yaw[gi] * Math.PI) / 180 + ghost.path.turn;
-		g.strokeStyle = COL.ghost;
-		g.lineWidth = 2;
-		g.beginPath();
-		g.moveTo(gx, gy);
-		g.lineTo(gx + Math.cos(ga) * 18, gy - Math.sin(ga) * 18);
-		g.stroke();
-		g.fillStyle = COL.ghost;
-		g.beginPath();
-		g.arc(gx, gy, 4, 0, 2 * Math.PI);
-		g.fill();
-	}
 	const a = (cur.d.yaw[i] * Math.PI) / 180 + cur.path.turn;
 	g.strokeStyle = COL.hover;
 	g.lineWidth = 2;
@@ -1901,14 +1443,10 @@ $('jump1').onclick = () => {
 	if (cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 };
 $('refresh').onclick = loadList;
-$('align').value = localStorage.getItem(ALIGN_KEY) === 'timer' ? 'timer' : 'jump';
-$('cmp-sel').onchange = compareChanged;
 $('to-compare').onclick = () => {
 	if (!cur) return;
-	const ids = [cur.head.id, ...(ghost ? [ghost.head.id] : [])];
-	location.href = `/compare#${cur.head.dir}/${ids.join(',')}`;
+	location.href = `/compare#${cur.head.dir}/${cur.head.id}`;
 };
-$('align').onchange = compareChanged;
 $('yaw-signed').checked = localStorage.getItem(YAW_SIGNED_KEY) === '1';
 LANES.find((l) => l.id === 'yaw').sub = YAW_SUB[$('yaw-signed').checked ? 'signed' : 'size'];
 $('yaw-signed').onchange = () => {

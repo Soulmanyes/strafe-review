@@ -4,9 +4,9 @@ Per-tick strafe recording and review for Momentum Mod. A custom HUD script recor
 
 Status: recorder, collector and viewer work. The viewer has three pages:
 
-- `/`: one attempt as a zoomable graph, with the mistakes found and an optional ghost (your best run, best jump 1, a top replay or any recording you pick).
+- `/`: one attempt as a zoomable graph, with run stats and the mistakes found. "Compare page" opens it on /compare.
 - `/drill`: jump 1 of every attempt, stacked and side by side, updated live, with each strafe's mouse movement in cm next to the optimal (type your mouse DPI in once).
-- `/compare`: 2 to 4 recordings on one graph, with stats side by side (gain, sync, angle, jump 1, speed, per jump, mistakes).
+- `/compare`: 2 to 4 recordings on one graph, with every run stat side by side (best per row marked), per jump numbers and mistakes. Quick picks: your fastest finish, your best jump 1, top replay.
 
 In game, the recorder shows a 3-row line after jump 1 lands: landing speed, gain % per strafe and the biggest mistake.
 

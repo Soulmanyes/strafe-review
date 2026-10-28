@@ -31,7 +31,9 @@ table.cmp { border-collapse: collapse; font: 13px ui-monospace, monospace; }
 table.cmp th, table.cmp td { padding: 4px 18px 4px 0; border-bottom: 1px solid #ffffff10; text-align: left; vertical-align: top; }
 table.cmp thead th { font: 600 13px system-ui; border-bottom: 1px solid var(--border); }
 table.cmp tbody th { font: 500 13px system-ui; color: var(--muted); white-space: nowrap; }
-table.cmp tbody th[title] { cursor: help; text-decoration: underline dotted #ffffff40; }
+table.cmp tbody th.tipped { cursor: help; text-decoration: underline dotted #ffffff40; }
+table.cmp .link { cursor: pointer; text-decoration: underline dotted; }
+table.cmp .link:hover { color: var(--accent); }
 table.cmp tr.grp th { color: var(--text); font: 600 12px system-ui; padding-top: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
 table.cmp td.best { color: #ffe066; font-weight: 700; }
 table.cmp td.best .star { font-size: 11px; }
@@ -51,3 +53,5 @@ table.cmp td.miss { color: var(--muted); }
 #path-roles .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; }
 #path-roles button { padding: 1px 8px; font-size: 12px; }
 #path-roles button.on { background: var(--card-hi); border-color: var(--accent); color: var(--text); }
+#presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#presets button.on { color: var(--text); background: var(--card-hi); border-width: 2px; }

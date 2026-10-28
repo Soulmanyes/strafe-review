@@ -411,6 +411,10 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Notes and tags** per attempt (for example "new sens"), with a filter by tag.
 - **Filters** by map, tickrate, style (normal, sideways, HSW) and finished or failed.
 - **PNG export** of a graph or jump view.
+- **Sort and search in the recording lists (owner, 2026-10-28):** on both the main page's sidebar list and the /compare picker list, own runs and replays alike.
+  - Sort: for example newest first, time, jump-1 gain, player name. Kept in localStorage.
+  - Search: a text box matching player name, map, tags and note. It stacks with the existing filters.
+  - Not built yet.
 
 #### Notes, tags and filters v1 (2026-10-28)
 
@@ -462,6 +466,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
   - Efficiency / lost: gain over ideal on the 7 rows centred on the reversal. For other players' recordings the window is centred `lag` rows earlier (keyLag(), 5-7 on replays). Gain % by tick offset from the angle reversal dips at 0 on own runs (6 % at the reversal) but at -6 on replays (33 %): replay view angles trail the velocity by about the key lag. v1 missed this and showed replays at 99 % (owner spotted it, 2026-10-28).
   - Peak: the fastest 2-tick average of the new-side turn in the 6 ticks after the reversal, vs optimal. Over 1.15 is overshoot, under 0.85 undershoot. It is not judged when +left/+right is held. Those swaps stay in time and efficiency, and the worst swap says "(+left/right)".
   - Gain dip (owner asked 2026-10-28: how fast the slowdown, pause and recovery happen, in gain terms): the lowest per-tick gain % within 4 ticks of the efficiency window's centre, then the ticks in a row below the run's own gain % before it (down) and after it (up); dip = down + 1 + up. The threshold is the run's gain % (owner's pick over a fixed 85 %). Shown as averages over the swaps (owner's pick 2026-10-28, after separate medians read like "2 t, 0 down, 0 up"): down + low + up = total, low = share of swaps with a dip at all. Averages run higher than medians (one finished run: 8.2 vs 5). Dip low point = that lowest tick's gain % (median). Measured: own dip median 4 ticks (finished ambience runs 4-5.5, low point about 0 %), replays 1-2 (low point 17-39 % on top replays).
+  - Swap vs strafe gain (owner's pick 2026-10-28, over averaging the strafes either side of a swap, which comes out at about the run's own gain % because each strafe touches two swaps): gain % pooled over all 7-row swap windows (each row once, same centre as Efficiency) vs over the strafing rows outside every window, and the gap in points. Windows of gap swaps are left out of both. Measured: own finished runs about 45-58 % vs 85-95 % (gap about -40 pts), top replay 88.6 vs 98.6 % (-10).
   - Key switch: the switch check's own rule (nearest switch within `SWITCH_WINDOW`, offset from the new strafe's start, target -1; none when either strafe has missed ticks). On target = 0-2 ticks before. Early / late use the switch check's thresholds from Check settings, so the counts equal the Mistakes list's switch entries (220 of 220 own attempts at defaults).
   - A swap with missed ticks near the reversal keeps only its key switch (`gap: true`) and isn't in the Swaps count.
 - **Measured over the store with the shipped `swapsOf()` (2026-10-28):**
@@ -492,14 +497,18 @@ The owner asked for a separate page that updates by itself the moment an attempt
 Do these before the owner's SSJ wishVel test (to-do `strafe-review-ssj-test`).
 
 1. **Graph readout overflows its box.** The numbers shown for the mouse position on the graph (`#readout`) run past the box. Make them wrap or fit; check /compare's readout too.
-2. **Remove comparison from the main run page.** The "Compare page" button is enough. Remove the Compare picker, the align select and its hint, the ghost chips in the header, the dashed ghost in the lanes, ghost text in the jump strip, the pink ghost path with its jump numbers, ghost values in the hover readout and the pink column in Run stats. The "Compare page" button opens /compare with the open attempt as the reference, since there is no ghost any more to bring along.
-3. **Everything the main page compared must be on /compare.** Known gaps to close:
-   - Quick picks: fastest own finish, best own jump 1, top replay (main page presets; /compare only has the list).
-   - Run stats: /compare's stats table has only the v1 groups. Add every Run stats row (CS:S gain, speed lost, spread, left/right, band shares, turn speed, strafe length, swaps incl. gain dip, keys, air time, distance), from the same `summarize()` and row definitions so both pages show the same numbers.
-   - Check the rest is already there and matches: per-jump gain in the jump strip, hover readout values per recording, both align modes, path gain colouring (Focus/Compare), and the notes (gain rebuilt from speed, replay keys not drawn, matched jump count).
+2. **Done (2026-10-28): comparison removed from the main run page.** Picker, align select and hint, ghost chips, lane ghost, jump-strip ghost, pink path, hover ghost values and the pink Run stats column are gone. The "Compare page" button opens /compare with the open attempt as the reference. `alignGhost()`, `ghostNearest()`, `turnPath()` and `gainShade()` stay in data.js for /compare.
+3. **Done (2026-10-28): /compare has everything the main page compared.**
+   - Run stats rows live in `static/runrows.js`, loaded by both pages: same rows, descriptions and hover tips. /compare shows one column per recording and stars the best per row. Direction per row: `best` is 'max', 'min' or a target (angle and peak 1, switch vs reversal -1). Not ranked: jumps landed, missed ticks, best/worst jump, turn speed, strafes per jump, strafe length, +left/+right ticks, swaps, key lag, worst swap. Run-length sums (distance, speed lost, speed at the end, end time) rank finished runs only. Rows a recording can't have (keys on replays, tick rows on spectated runs) show '–' with the reason.
+   - Clickable cells (best/worst jump, jump 1 gain, worst swap) zoom the compare graph; worst swap uses that recording's aligned x.
+   - Quick picks above the recording list: your fastest finish, your best jump 1, top replay. Click adds, click again takes out.
+   - The legend says when a recording's gain and angle were rebuilt from speed.
+   - Not ported: the ghost's thin A/D key strips. /compare has no keys lane.
+4. **End chip pushed out of the attempt card (owner, 2026-10-28).** In the main page's attempt list, a long label such as `Replay: Soulmanyes. #BOTDG` pushes the end chip next to it ("Replay stopped") past the card's right edge, where it gets cut off. Let the row wrap, or shorten the label with an ellipsis, so the end chip always stays inside the card.
 
 ## Later / undecided
 
+- **66-tick surf and bhop bonuses (owner, 2026-10-28, non-urgent):** make the recorder, collector and viewer work for surf maps (66 tick, see Tickrate above) and for bhop bonus tracks, not only bhop main tracks.
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.
 - **Viewer as a tab in the Source Yaw GTK app:** to be decided later. The web page comes first.
 - **Raw mouse dx lane:**

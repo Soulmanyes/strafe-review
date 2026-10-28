@@ -24,11 +24,13 @@
 		<div class="sec-head"><h2>Recordings</h2><span id="pick-sum" class="muted"></span>
 			<label class="drill-toggle"><input type="checkbox" id="show-drills"><span>Show drills</span></label>
 			<button id="clear">Clear picks</button></div>
+		<div id="presets" title="Quick picks that follow your saved recordings on this map"></div>
 		<div id="pick-list"></div>
 	</section>
 	<section id="stats">
-		<div class="sec-head"><h2>Stats</h2><span class="muted">best in each row is marked · hover a row name for how it is measured</span></div>
+		<div class="sec-head"><h2>Stats</h2><span class="muted">the same stats as the main page's Run stats · best in each row is marked · hover a row name for what it means · underlined: click to zoom there</span></div>
 		<div id="stats-body" class="muted">Pick at least 2 recordings.</div>
+		<div id="rs-tip" hidden></div>
 	</section>
 	<section id="graph">
 		<div class="sec-head"><h2>Graph</h2>
@@ -70,6 +72,8 @@
 <script src="/static/data.js"></script>
 <script src="/static/checks.js"></script>
 <script src="/static/stats.js"></script>
+<script src="/static/mouse.js"></script>
+<script src="/static/runrows.js"></script>
 <script src="/static/compare.js"></script>
 </body>
 </html>
