@@ -484,6 +484,7 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Check.** The CS:S air physics (add up to 30 u/s along wishdir) predicts own-run speed per tick to 0.03 u/s, so Momentum's air move matches CS:S here. Old summary stats were unchanged by this.
 - **Numbers.** Owner's finished ambience runs: 70-76 % CS:S vs 83-88 % Momentum gain. Top replays: 79-88 % CS:S vs 91-95 %. The two don't map one to one: CS:S scores the angle error linearly, Momentum's speed gain only quadratically.
 - Run time over the whole store (240 attempts): about 1 s, so `angleFit()` on every page load is fine.
+- **Owner test (2026-10-28, owner's pick):** the recorder now also saves `wx`, `wy` = `GetMoveHudData().wishVel` x/y (the game's own wish velocity, as the cgaz HUD uses it), appended to the end of the columns so old files still parse. `node viewer/check_ssj.js` compares, per air row, p from wishVel with p from the velocity change at wishVel row offsets -1/0/+1, and the per-jump SSJ % both ways. Checked on a fake file with wishVel made from the velocity change: median p difference 0.1 at offset 0, jumps within 0.3 %. Waits on the owner: `panorama_reload`, some runs including deliberately over-turned jumps at high speed, then run the checker.
 - **Not tested against a real CS:S server.** Momentum has no SSJ-equivalent number (LastJump has speedGain, yawRatio, efficiency, sync). A real check needs the owner's CS:S SSJ numbers for comparison.
 
 ## Later / undecided

@@ -51,7 +51,7 @@ function parse(a) {
 		}
 	}
 	const n = lines.length;
-	const want = ['tick', 'gain', 'ideal', 'ratio', 'right', 'vx', 'vy', 'vz', 'yaw', 'buttons'];
+	const want = ['tick', 'gain', 'ideal', 'ratio', 'right', 'vx', 'vy', 'vz', 'yaw', 'buttons', 'wx', 'wy'];
 	const d = { n };
 	for (const w of want) d[w] = new Float64Array(n);
 	lines.forEach((ln, i) => {

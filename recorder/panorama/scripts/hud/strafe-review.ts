@@ -45,7 +45,9 @@ const COLS = [
 	'buttons', // physicalButtons (local player's keys, also while spectating)
 	'move', // moveStatus: 0 air, 1 walk, 2 water, 3 waterjump
 	'duck',
-	'rtick' // replay curtick while a replay plays, else -1
+	'rtick', // replay curtick while a replay plays, else -1
+	'wx', // GetMoveHudData().wishVel x/y: the game's own wish velocity, to check the viewer's CS:S gain
+	'wy'
 ];
 
 interface Attempt {
@@ -166,7 +168,9 @@ function sample() {
 		MomentumInputAPI.GetButtons().physicalButtons,
 		move.moveStatus,
 		MomentumPlayerAPI.IsDucking() ? 1 : 0,
-		replaying ? MomentumReplayAPI.GetReplayProgress().curtick : -1
+		replaying ? MomentumReplayAPI.GetReplayProgress().curtick : -1,
+		r(move.wishVel.x, 2),
+		r(move.wishVel.y, 2)
 	].join(',');
 
 	ring.push(row);
