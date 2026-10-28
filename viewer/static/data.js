@@ -122,9 +122,15 @@ function parse(a) {
 		d.angleShift = fit.err < SSJ_FIT_MAX ? fit.lag : Math.round(REPLAY_ANGLE_LAG / d.interval);
 		if (d.angleShift) {
 			const yaw = new Float64Array(n);
+			// the yaw `angleShift` ticks later; over missed ticks there it is interpolated between the rows
+			// either side, else one row would get several ticks of turning
 			for (let i = 0, j = 0; i < n; i++) {
-				while (j < n - 1 && d.tick[j] < d.tick[i] + d.angleShift) j++;
-				yaw[i] = d.yaw[j];
+				const want = d.tick[i] + d.angleShift;
+				while (j < n - 1 && d.tick[j] < want) j++;
+				if (d.tick[j] > want && j > 0) {
+					const f = (want - d.tick[j - 1]) / (d.tick[j] - d.tick[j - 1]);
+					yaw[i] = d.yaw[j - 1] + f * wrap180(d.yaw[j] - d.yaw[j - 1]);
+				} else yaw[i] = d.yaw[j];
 			}
 			d.yaw = yaw;
 		}
