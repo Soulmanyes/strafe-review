@@ -1,0 +1,33 @@
+# Builds strafe-review.exe on Windows (PyInstaller can't cross-build) and zips it with the README
+# and licence. Run by hand (Actions > windows > Run workflow) for a test build, kept as a workflow
+# artifact; a pushed v* tag also attaches the zip to that tag's GitHub release.
+name: windows
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install pyinstaller
+      - run: python build.py
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/strafe-review.exe, README.md, LICENSE -DestinationPath strafe-review-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: strafe-review-windows
+          path: strafe-review-windows.zip
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" strafe-review-windows.zip --title "$GITHUB_REF_NAME" --generate-notes || gh release upload "$GITHUB_REF_NAME" strafe-review-windows.zip --clobber

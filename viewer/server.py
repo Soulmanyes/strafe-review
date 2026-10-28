@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Strafe Review viewer: serves the saved attempts and the review page on localhost.
 
-    python viewer/server.py [--port 8765] [--store DIR] [--log FILE] [--no-collect] [--no-browser]
+    python viewer/server.py [--port 8765] [--game DIR] [--store DIR] [--log FILE] [--no-collect] [--no-browser]
 
 It also runs the collector (collector/collector.py) in a thread, tailing Momentum's yaw.log, so one
 process records and serves. If the port is taken, another copy is already doing both and this one exits.
@@ -389,7 +389,13 @@ def collect(log, store):
         time.sleep(COLLECT_RETRY)
 
 
-def main():
+class Server(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets a second copy bind the same port, so the busy-port check below
+    # would never fire; leave it off there
+    allow_reuse_address = sys.platform != "win32"
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--store", default=str(collector.STORE))
@@ -398,7 +404,7 @@ def main():
     ap.add_argument("--log", help="the console log to collect from (con_logfile; default: yaw.log in --game)")
     ap.add_argument("--no-collect", action="store_true", help="only serve, don't collect")
     ap.add_argument("--no-browser", action="store_true", help="don't open the page in the browser")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if not args.game and not (args.game_cfg and (args.log or args.no_collect)):
         sys.exit(f"Strafe Review: {collector.NOT_FOUND}, or pass --game")
     Handler.store = Path(args.store)
@@ -408,7 +414,7 @@ def main():
     global MOM_DIR
     MOM_DIR = Handler.game_cfg.parent.parent
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = Server(("127.0.0.1", args.port), Handler)
     except OSError as e:
         # bound before collecting: a busy port means another copy is already collecting
         sys.exit(f"Strafe Review: port {args.port} is in use ({e.strerror}); is it already running?")
