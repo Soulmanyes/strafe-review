@@ -8,6 +8,7 @@ Run by .github/workflows/windows.yml on the Windows build; it runs on Linux too.
 2. A second double-click while it runs only opens the page and exits; a second server on the busy port
    exits with an error (the SO_REUSEADDR check on Windows).
 3. Launch option: runs the "game", hands back its exit code, leaves the server running, opens the page.
+4. The page's Stop button (POST /api/stop) ends that background server.
 The browser is a stand-in that writes the URL to a file.
 """
 import json
@@ -130,6 +131,17 @@ def main():
         if opened(tmp)[-1:] != [URL] or len(opened(tmp)) != 3:
             fail(f"browser calls: {opened(tmp)}")
         print("   ok: exit code 3 handed back, background server running, page opened")
+
+        print("4. Stop button")
+        req = urllib.request.Request(URL + "api/stop", data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            if r.status != 200:
+                fail(f"/api/stop answered {r.status}")
+        time.sleep(3)
+        if get("/")[0] is not None:
+            fail("server still answers after /api/stop")
+        print("   ok: the background server ended")
     finally:
         stop_all(exe)
         shutil.rmtree(tmp, ignore_errors=True)

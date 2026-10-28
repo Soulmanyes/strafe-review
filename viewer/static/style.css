@@ -289,3 +289,10 @@ h2 { font-size: 15px; margin: 0; }
 /* Copy / Save picture buttons (snap.js), kept together at the right of a section header */
 .snap-btns { display: flex; gap: 4px; margin-left: auto; }
 .snap-btns button { margin-left: 0; }
+
+/* Stop button (stop.js) and the page left after stopping */
+button.stop { border-color: #c0564f; }
+button.stop:hover { background: #4a2a2a; border-color: #e06c64; }
+body.stopped { align-items: center; justify-content: center; }
+.stopped-msg { text-align: center; color: var(--muted); }
+.stopped-msg h1 { color: var(--text); font-size: 20px; }

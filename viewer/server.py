@@ -21,6 +21,8 @@ Routes:
   /api/mouse                 sensitivity and m_yaw from the game's config.cfg now, for attempts
                              recorded before the recorder stamped them (null if unreadable)
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
+  POST /api/stop             stops this program (the page's Stop button); it starts again with the game
+                             or by hand
   POST /api/meta/<map>/<id>  {"note": str, "tags": [str]}: sets the attempt's note and tags, answers
                              with what was stored. Kept in <store>/meta.json, not in the attempt file.
 """
@@ -325,6 +327,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parts = self.path.split("?", 1)[0].strip("/").split("/")
+        if parts == ["api", "stop"]:
+            if not self.local_request():
+                return self.fail(403, "forbidden")
+            self.send(200, b"{}", "application/json")
+            print("Strafe Review: stopped from the page", flush=True)
+            # shutdown() waits for serve_forever() to return, so it can't run on this request's thread
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return None
         if not (len(parts) == 4 and parts[:2] == ["api", "meta"] and MAP.fullmatch(parts[2]) and ID.fullmatch(parts[3])):
             return self.fail(404, "not found")
         if not self.local_request():
