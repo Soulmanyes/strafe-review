@@ -470,7 +470,7 @@ function showMistakes() {
 	for (const name of names) {
 		const cId = CHECKS.find((c) => c.name === name).id;
 		const per = shown.map((r) => r.mistakes.filter((m) => m.name === name));
-		const skipped = shown.map((r) => isOther(r.head) && (REPLAY_SKIP.includes(cId) || cId === 'takeoff'));
+		const skipped = shown.map((r) => isOther(r.head) && ((!r.d.ownKeys && REPLAY_SKIP.includes(cId)) || cId === 'takeoff'));
 		if (per.every((p) => !p.length) && !skipped.some(Boolean)) continue;
 		rows.push({
 			name,

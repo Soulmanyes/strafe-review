@@ -42,19 +42,19 @@ function keyOffOf(d, sw, B) {
 // per-tick yaw turns the new way (the 5-tick average lags and smears it). Per swap:
 //  - time: ticks from the last old-side tick at 85 %+ of optimal to the first new-side one (fall + ramp).
 //  - eff / lost: gain over ideal on the 7 rows centred on the reversal, and ideal - gain there in u/s.
-//    Other players' recordings: centred `lag` rows earlier (keyLag()). Their angles trail the velocity by
-//    about that much (gain by tick offset dips 6 ticks before the angle reversal on replays, at it on own runs).
+//    Replays too: parse() already moved their angles back by the playback lag, so the dip sits at the reversal.
 //  - peak: the highest 2-tick average of the new-side turn over the 6 ticks from the reversal, vs optimal.
 //    Over 1.15 = overshoot, under 0.85 = undershoot. Not judged when +left/+right is held (fixed turn rate).
 //  - dip / dipDown / dipUp / dipLow: the gain dip. Lowest per-tick gain % within 4 rows of the window
 //    centre (dipLow), ticks under dipPct (the run's gain %) in a row before it (down) and after it (up);
 //    dip = down + 1 + up.
-//  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Null for replays
-//    and, as in the check, when either strafe has missed ticks anywhere.
+//  - keyOff: the key switch nearest the reversal, by the switch check's rule (target -1). Null without
+//    usable keys (!d.ownKeys) and, as in the check, when either strafe has missed ticks anywhere.
 // btn = +left/+right held on either side of the reversal (the owner's prestrafe into jump 1).
-function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
+function swapsOf(d, j, endIdx, dipPct = DIP_PCT) {
+	const noKeys = !d.ownKeys;
 	const sts = strafesOf(d, j, endIdx);
-	const sw = replay ? [] : switchesOf(d, j, endIdx);
+	const sw = noKeys ? [] : switchesOf(d, j, endIdx);
 	const out = [];
 	for (let k = 1; k < sts.length; k++) {
 		const A = sts[k - 1];
@@ -66,7 +66,7 @@ function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
 		for (let i = lo + 1; i <= hi; i++) if (d.gap[i] > 0) gap = true;
 		if (gap) {
 			// still counted for the key switch, which the switch check judges here too
-			out.push({ jump: j.num, k, dir: B.dir, i: B.i0, gap: true, fall: NaN, ramp: NaN, time: NaN, eff: NaN, lost: 0, dip: NaN, dipDown: NaN, dipUp: NaN, dipLow: NaN, peak: NaN, keyOff: replay || A.gap || B.gap ? null : keyOffOf(d, sw, B), btn: false });
+			out.push({ jump: j.num, k, dir: B.dir, i: B.i0, gap: true, fall: NaN, ramp: NaN, time: NaN, eff: NaN, lost: 0, dip: NaN, dipDown: NaN, dipUp: NaN, dipLow: NaN, peak: NaN, keyOff: noKeys || A.gap || B.gap ? null : keyOffOf(d, sw, B), btn: false });
 			continue;
 		}
 		let rev = B.i0;
@@ -92,9 +92,7 @@ function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
 		}
 		let g = 0;
 		let id = 0;
-		// a replay's view angles trail its movement by its key lag, so the speed dip sits that many rows earlier
-		const mid = rev - lag;
-		for (let i = Math.max(mid - SWAP_HALF, 0); i <= Math.min(mid + SWAP_HALF, d.n - 1); i++) {
+		for (let i = Math.max(rev - SWAP_HALF, 0); i <= Math.min(rev + SWAP_HALF, d.n - 1); i++) {
 			if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
 			g += d.gain[i];
 			id += d.ideal[i];
@@ -103,7 +101,7 @@ function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
 		// gain %) in a row before it (down) and after it (up). No tick under it = no dip (0 / 0, low point kept).
 		const pctAt = (i) => (i >= 0 && i < d.n && d.gap[i] === 0 && strafing(d, i) && d.ideal[i] > 0 && Number.isFinite(d.gain[i]) ? (100 * d.gain[i]) / d.ideal[i] : NaN);
 		let low = -1;
-		for (let i = mid - DIP_FIND; i <= mid + DIP_FIND; i++) if (Number.isFinite(pctAt(i)) && (low < 0 || pctAt(i) < pctAt(low))) low = i;
+		for (let i = rev - DIP_FIND; i <= rev + DIP_FIND; i++) if (Number.isFinite(pctAt(i)) && (low < 0 || pctAt(i) < pctAt(low))) low = i;
 		let dipDown = NaN;
 		let dipUp = NaN;
 		const dipLow = low < 0 ? NaN : pctAt(low);
@@ -124,14 +122,14 @@ function swapsOf(d, j, endIdx, replay, lag = 0, dipPct = DIP_PCT) {
 				if (Number.isFinite(r) && !(r <= peak)) peak = r;
 			}
 		}
-		const keyOff = replay || A.gap || B.gap ? null : keyOffOf(d, sw, B);
+		const keyOff = noKeys || A.gap || B.gap ? null : keyOffOf(d, sw, B);
 		out.push({ jump: j.num, k, dir: B.dir, i: rev, gap: false, fall, ramp, time: fall + ramp, eff: id > 0 ? (100 * g) / id : NaN, lost: Math.max(id - g, 0), dip, dipDown, dipUp, dipLow, peak, keyOff, btn });
 	}
 	return out;
 }
 
 // Ticks the keys run ahead of the turn: the shift (-LAG_MAX..LAG_MAX) where the key held `lag` ticks
-// earlier matches the turn best. Replays come out around +3 to +7 (their keys lead the angles).
+// earlier matches the turn best. Own runs and replays (angles moved back in parse()) come out around +1.
 function keyLag(d, ranges) {
 	let best = { lag: 0, sync: -1 };
 	for (let lag = -LAG_MAX; lag <= LAG_MAX; lag++) {
@@ -225,14 +223,13 @@ function summarize(head, d, jumps) {
 
 	// swaps after the loop: the gain dip is judged against the run's own gain %
 	const runPct = id > 0 ? (100 * g) / id : NaN;
-	for (const j of run) swaps.push(...swapsOf(d, j, endIdx, replay, replay ? lag : 0, Number.isFinite(runPct) ? runPct : DIP_PCT));
+	for (const j of run) swaps.push(...swapsOf(d, j, endIdx, Number.isFinite(runPct) ? runPct : DIP_PCT));
 
 	// swap vs strafe gain: gain % pooled over the swap windows (each row once) vs over the strafing rows
 	// outside every window. Windows of swaps with missed ticks are left out of both.
 	const winOf = new Map(); // row -> true for a timed swap's window, false for a gap swap's
 	for (const w of swaps) {
-		const mid = w.gap ? w.i : w.i - (replay ? lag : 0);
-		for (let i = mid - SWAP_HALF; i <= mid + SWAP_HALF; i++) if (w.gap || winOf.get(i) !== false) winOf.set(i, !w.gap);
+		for (let i = w.i - SWAP_HALF; i <= w.i + SWAP_HALF; i++) if (w.gap || winOf.get(i) !== false) winOf.set(i, !w.gap);
 	}
 	const inWin = { g: 0, id: 0 };
 	const outWin = { g: 0, id: 0 };

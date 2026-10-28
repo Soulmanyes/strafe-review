@@ -604,3 +604,9 @@ A tiny recorder in `custom/` that prints jump-1 gain and the button bits to `yaw
 3. Does writing a whole run in one go make the game hitch when you reset straight into the next attempt?
 
 If writing everything at once hitches, spread the output over several frames.
+
+## Replay angle lag (2026-10-28)
+
+Test: own finished run on bhop_ambience (mvsppcx3xc) vs its own replay played back (mvspq0n55q), lined up by velocity (replay tick = run tick + 185, error 0.0). Velocity, keys, duck, move and wishVel are equal tick for tick. Yaw and pitch are equal only 6 rows later (mean 0.21° off after the shift, max 1.6°: the live run's per-frame yaw sample). So replay **keys are right and the view angles trail by about 60 ms** (6 ticks at 100 tick, 4 on surf_artois at 66 tick; `angleFit()` finds the same on 16 of 19 replays, the rest are fragments). The old reading "replay keys run 3-7 ticks ahead" had it backwards.
+
+Fix: `parse()` reads a replay's yaw `d.angleShift` rows later (per-recording `angleFit()` when err < 1 u/s, else `REPLAY_ANGLE_LAG` 0.06 s). `d.ownKeys` is now true for replays, so key checks, switch offsets, sync and key lag run on them; the swap window is no longer moved for replays. After the fix the pair gives sync 98.6/98.6 %, key lag 1/1, swap eff 42.9/43.8 %, mistakes 6/5 (only jump 1's +left switch missing), SSJ equal from jump 3. Other differences seen: the replay recording missed 5 run ticks (HUD frames), its runTime is 1 tick short (21.535 vs 21.545 s, the .mtv name says 21.545), it ended as `replaced`.

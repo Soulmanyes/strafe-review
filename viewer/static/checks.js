@@ -28,8 +28,8 @@ const CHECKS = [
 const TIMED = { early: ['minTicks'], lateFirst: ['maxTicks'], wrongKey: ['minTicks'], noKey: ['minTicks'], wAir: ['minTicks'] };
 const atRate = (ticks, interval) => Math.ceil((ticks * 0.01) / interval - 1e-6);
 
-// Replays' keys run 3-7 ticks ahead of their view angles (one WR replay: every switch at -3 to -7,
-// own runs centre on -1), so key timing in a replay says nothing about the player. Skipped there.
+// Key timing checks, skipped for recordings whose keys don't line up with the moves (!d.ownKeys). Replays
+// run them: parse() moves their view angles back by the playback lag, so keys and turn line up as in the run.
 const REPLAY_SKIP = ['lateFirst', 'wrongKey', 'noKey', 'switch'];
 const SWITCH_WINDOW = 8; // a key switch further than this from a reversal belongs to no reversal
 // A jump-1 takeoff slower than this wasn't a real jump (a reset before jumping read 34 u/s, a replay
@@ -156,13 +156,13 @@ const SIDE = { 1: 'left', '-1': 'right' };
 
 // settings: { <checkId>: { on, <param>: value } }, filled from CHECKS defaults where missing.
 // baseline: { takeoffMedian, takeoffRuns } of the other own attempts on this map and tickrate, or null.
-// replay: true for someone's replay, which skips the REPLAY_SKIP checks.
+// replay: true for someone else's recording; it skips the REPLAY_SKIP checks only without usable keys (d.ownKeys).
 // Returns mistakes [{ check, name, jump, i0, i1, lost, text }], biggest loss first.
 function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 	const cfg = {};
 	for (const c of CHECKS) {
 		const s = (settings && settings[c.id]) || {};
-		cfg[c.id] = { on: (s.on === undefined ? c.on : s.on) && !(replay && REPLAY_SKIP.includes(c.id)) };
+		cfg[c.id] = { on: (s.on === undefined ? c.on : s.on) && !(replay && !d.ownKeys && REPLAY_SKIP.includes(c.id)) };
 		for (const [p, def] of Object.entries(c.params)) cfg[c.id][p] = s[p] === undefined ? def.v : s[p];
 		for (const p of TIMED[c.id] || []) cfg[c.id][p] = atRate(cfg[c.id][p], d.interval || 0.01);
 	}

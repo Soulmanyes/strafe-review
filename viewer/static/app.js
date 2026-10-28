@@ -488,7 +488,7 @@ function showMistakes() {
 	box.replaceChildren();
 	const ms = cur ? cur.mistakes : [];
 	const total = ms.reduce((t, m) => t + m.lost, 0);
-	const skipped = cur && isOther(cur.head) ? " · key timing checks are skipped for other players' recordings (replay keys run ahead of the turn)" : '';
+	const skipped = cur && !cur.d.coarse && !cur.d.ownKeys ? ' · key timing checks are skipped (keys not recorded with the moves)' : '';
 	if (cur && cur.d.coarse) {
 		$('mistakes-sum').textContent = "Checks off: a spectated live player's speed only updates every few ticks, too coarse to judge ticks.";
 		showRunStats();
@@ -615,7 +615,7 @@ function showRunStats() {
 	const me = { head: cur.head, d: cur.d, path: cur.path, mistakes: cur.mistakes };
 	const notes = [];
 	if (cur.d.coarse) notes.push("Spectated live run: speed only updates every few ticks, so only run, gain and speed numbers are shown.");
-	else if (isOther(cur.head)) notes.push("Other player's recording: key numbers are left out (replay keys run ahead of the angles).");
+	else if (!cur.d.ownKeys) notes.push('Key numbers are left out: this recording\'s keys don\'t line up with its moves.');
 	$('rs-note').textContent = notes.join(' ');
 	const ctx = {
 		cms: (r, deg) => {

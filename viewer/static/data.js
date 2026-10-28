@@ -107,10 +107,29 @@ function parse(a) {
 	}
 	d.coarse = d.derived && airRows >= SPECTATE_MIN_AIR && changed < airRows / 2;
 	// CS:S gain: a recording's wish velocity is used only when it has any in the air (it might read 0 for other
-	// players), and keys only when they are the player's own and line up with the moves (replay keys run ahead)
+	// players), and keys only when they line up with the moves (d.ownKeys below)
 	d.hasWish = false;
 	for (let i = 0; i < n && !d.hasWish; i++) if (!d.ground[i] && Math.hypot(d.wx[i], d.wy[i]) > 0.1) d.hasWish = true;
-	d.ownKeys = !isOther(a) && !d.coarse;
+	// A replay's view angles trail its velocity and keys by about 60 ms (6 ticks at 100 tick, 4 at 66; own run vs
+	// its own replay: velocity and keys equal tick for tick, yaw equal only 6 rows later). Read them that much
+	// later, so turn, keys and moves line up as they did in the run. The fit is per recording; a fragment
+	// too short or rough to fit (err of 1 u/s or more) gets the 60 ms default.
+	d.angleShift = 0;
+	if (a.label === 'replay' && !d.coarse) {
+		const fit = angleFit(d);
+		d.angleShift = fit.err < SSJ_FIT_MAX ? fit.lag : Math.round(REPLAY_ANGLE_LAG / d.interval);
+		if (d.angleShift) {
+			const yaw = new Float64Array(n);
+			for (let i = 0, j = 0; i < n; i++) {
+				while (j < n - 1 && d.tick[j] < d.tick[i] + d.angleShift) j++;
+				yaw[i] = d.yaw[j];
+			}
+			d.yaw = yaw;
+		}
+		delete d.angleFit;
+	}
+	// keys line up with the moves in own runs and replays, not in coarse spectated rows
+	d.ownKeys = a.label !== 'spectate' && !d.coarse;
 	if (d.derived) {
 		for (let i = 0; i < n; i++) {
 			const v = i > 0 ? d.speed[i - 1] : NaN;
@@ -159,8 +178,10 @@ function parse(a) {
 // (score m / 30 up to 30, (60 - m) / 30 above). Changes over 60 u/s count only when they line up with the
 // wishdir from yaw + keys within 5° (turning far ahead of the velocity); else teleport, booster or wall, skipped.
 // A takeoff row is a ground move, so it uses the yaw and keys, read `lag` rows later (angleFit()): a
-// recording's angles can trail its velocity (replays by about 6 ticks). Rows after missed ticks are skipped.
+// recording's angles can trail its velocity (parse() already moves a replay's angles back). Rows after missed
+// ticks are skipped.
 const SSJ_LAG_MAX = 10;
+const REPLAY_ANGLE_LAG = 0.06; // seconds a replay's view angles trail its velocity and keys (see parse())
 
 function wishDir(d, yi, ki) {
 	const b = d.buttons[ki];
@@ -544,4 +565,4 @@ function holdHeight(box, key = '') {
 	box.style.minHeight = `${held.h}px`;
 }
 
-if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, TRACK_NAMES, course, tickRate, SSJ_LAG_MAX, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };
+if (typeof module !== 'undefined') module.exports = { BIT, AIR_ADD, TRACK_NAMES, course, tickRate, SSJ_LAG_MAX, REPLAY_ANGLE_LAG, SSJ_MAX_DV, wishDir, angleFit, ssjRow, ssjJump, SPECTATE_MIN_AIR, isOther, whoseRun, wrap180, parse, findJumps, runGaps, runEnd, alignGhost, ghostNearest, buildPath, pathDistance, turnPath, pathPct, recordingPath, gainShade };

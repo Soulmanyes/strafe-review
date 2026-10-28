@@ -9,13 +9,13 @@
 // r = { head, d, path, mistakes }. Rows without best are not ranked (no better direction).
 
 // need: 'tick' rows are left out for a spectated live run (speed only every few ticks), 'keys' rows for
-// other players' recordings (their keys run ahead)
+// recordings whose keys don't line up with the moves (!d.ownKeys)
 function skipRow(r, need) {
-	return (need === 'tick' && r.d.coarse) || (need === 'keys' && (r.d.coarse || isOther(r.head)));
+	return (need === 'tick' && r.d.coarse) || (need === 'keys' && (r.d.coarse || !r.d.ownKeys));
 }
 
 function skipWhy(r) {
-	return r.d.coarse ? 'spectated: speed every few ticks' : 'not run (replay keys run ahead)';
+	return r.d.coarse ? 'spectated: speed every few ticks' : 'not run (keys not recorded with the moves)';
 }
 
 // The switch check's early/late thresholds from the saved check settings, so counts match the Mistakes list
@@ -137,16 +137,16 @@ function runStatRows(ctx) {
 				{
 					name: 'Sync (keys vs turn)', desc: 'Share of turning ticks where the right strafe key (A or D alone) is held. Higher = better.',
 					tip: "Strafing ticks where A or D alone matches the turn side, keys shifted by the best lag. +left/+right ticks out. Not the game's sync number",
-					v: (s, r) => `${n(s.sync, 1, ' %')}${isOther(r.head) ? ' approx.' : ''}`,
-					sub: (s, r) => `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t${isOther(r.head) ? ' (replay playback)' : ''}`,
+					v: (s) => n(s.sync, 1, ' %'),
+					sub: (s) => `keys ${s.lag >= 0 ? 'ahead' : 'behind'} ${Math.abs(s.lag)} t`,
 					num: (s) => s.sync,
 					best: 'max',
 					need: 'tick'
 				},
 				{
-					name: 'Key lag', desc: "How many ticks your keys come before your mouse turn. Your runs: about 1. On a replay it is the replay's playback delay (about 5 for anyone), not the player.",
-					tip: 'Ticks the keys run ahead of the turn (best match). Own runs about 1, replays 5-7: replays store keys ahead of the view angles',
-					v: (s, r) => (Number.isFinite(s.sync) ? `${s.lag} t${isOther(r.head) ? ' · replay playback, not the player' : ''}` : '–'),
+					name: 'Key lag', desc: 'How many ticks your keys come before your mouse turn. Your runs: about 1.',
+					tip: "Ticks the keys run ahead of the turn (best match). Replays too: their view angles play back about 60 ms late, and the viewer moves them back first",
+					v: (s) => (Number.isFinite(s.sync) ? `${s.lag} t` : '–'),
 					need: 'tick'
 				},
 				{ name: 'Switch vs reversal', desc: 'When you press the new key compared with when your mouse changes direction. Target -1 (one tick before).', tip: 'Median ticks from the key switch to the reversal, as the switch check (target -1: one tick before)', v: (s) => n(s.keyOff, 1, ' t'), num: (s) => s.keyOff, best: -1, need: 'keys' },
@@ -169,9 +169,9 @@ function runStatRows(ctx) {
 				{
 					name: 'Found',
 					desc: 'Mistakes found by the checks (listed below the path).',
-					tip: 'Mistake checks with the current settings. Replays skip the key checks (their keys run ahead of the angles) and weak takeoff (it compares with your own median), so they are not ranked',
+					tip: 'Mistake checks with the current settings. Replays skip weak takeoff (it compares with your own median), so they are not ranked',
 					v: (s, r) => (r.mistakes ? String(r.mistakes.length) : '–'),
-					sub: (s, r) => (isOther(r.head) ? 'key checks and weak takeoff not run' : ''),
+					sub: (s, r) => (isOther(r.head) ? 'weak takeoff not run' : ''),
 					num: (s, r) => (r.mistakes && !isOther(r.head) ? r.mistakes.length : NaN),
 					best: 'min',
 					need: 'tick'
