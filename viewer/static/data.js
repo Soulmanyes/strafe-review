@@ -84,12 +84,14 @@ function parse(a) {
 		d.gap[i] = i > 0 ? d.tick[i] - d.tick[i - 1] - 1 : 0;
 	}
 	// Ground: vz is exactly 0 there (the move column reads 0 on every row, so it can't be used).
-	// A vz of 0 between rising and falling is an apex, not ground.
+	// A vz of 0 between rising and falling is an apex, not ground. A replay can play a small steady vz back on
+	// the ground (0.42 on every start-zone tick of one, where the run read 0): under GROUND_VZ and the same as
+	// a neighbour row counts as ground too, since gravity changes vz every tick in the air.
 	for (let i = 0; i < n; i++) {
-		if (d.vz[i] !== 0) continue;
 		const prev = i > 0 ? d.vz[i - 1] : 0;
 		const next = i < n - 1 ? d.vz[i + 1] : 0;
-		d.ground[i] = prev > 0 && next < 0 ? 0 : 1;
+		if (d.vz[i] === 0) d.ground[i] = prev > 0 && next < 0 ? 0 : 1;
+		else if (Math.abs(d.vz[i]) < GROUND_VZ && ((i > 0 && prev === d.vz[i]) || (i < n - 1 && next === d.vz[i]))) d.ground[i] = 1;
 	}
 	// Replays carry no tick stats (GetLastTickStats() reads 0 while spectating). Own runs show
 	// gain = change in horizontal speed and ideal = sqrt(v^2 + 30^2) - v exactly, so both are rebuilt from speed.
@@ -181,6 +183,7 @@ function parse(a) {
 // recording's angles can trail its velocity (parse() already moves a replay's angles back). Rows after missed
 // ticks are skipped.
 const SSJ_LAG_MAX = 10;
+const GROUND_VZ = 1; // u/s: a steady vz under this is ground (see parse())
 const REPLAY_ANGLE_LAG = 0.06; // seconds a replay's view angles trail its velocity and keys (see parse())
 
 function wishDir(d, yi, ki) {

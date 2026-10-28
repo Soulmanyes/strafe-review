@@ -677,9 +677,13 @@ function showRunStats() {
 
 // ---------- view ----------
 
+// The whole attempt: the start zone rows the recorder keeps before the timer (a replay's missed ticks there
+// would make it longer), to the last row, or to the run end for a replay (it pauses there and keeps sending rows)
 function fullRange() {
 	const d = cur.d;
-	return { x0: d.x[0] - 5, x1: d.x[d.n - 1] + 5 };
+	const x0 = Math.max(d.x[0], -(cur.head.preRows || 0));
+	const last = cur.head.label === 'replay' ? cur.endIdx : d.n - 1;
+	return { x0: x0 - 5, x1: d.x[last] + 5 };
 }
 
 function whole() {
@@ -915,9 +919,11 @@ function yawSigned(g, l, d, i0, i1, hi) {
 const LANE_DRAW = {
 	jumps(g, l, d) {
 		g.font = '600 12px system-ui, sans-serif';
+		// a replay's last jump runs on through the rows it sends while paused at the end: box it to the run end
+		const xEnd = cur.head.label === 'replay' ? d.x[cur.endIdx] : Infinity;
 		for (const j of cur.jumps) {
 			const X0 = px(j.x0 - 0.5);
-			const X1 = px(j.x1 + 0.5);
+			const X1 = px(Math.min(j.x1, xEnd) + 0.5);
 			if (X1 < GUTTER || X0 > base.clientWidth) continue;
 			const t = Math.min(Math.max((j.pct - 60) / 35, 0), 1); // 60% red .. 95% green
 			const hue = 0 + t * 120;
