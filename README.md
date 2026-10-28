@@ -41,4 +41,4 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 - The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. A copy running from this repo only reports new versions: `git pull` brings them.
 - **Show the jump-1 line in game** (bottom left of the main page) turns on the in-game line after jump 1: landing speed, gain %, gain per strafe and the biggest mistake. It is off by default so it doesn't land on top of anyone's own HUD. Type `panorama_reload` in the game console after changing it.
 
-License: CC0 1.0 (see [LICENSE](LICENSE)).
+License: CC0 1.0 (see [LICENSE](LICENSE)). The Windows exe also bundles Python, OpenSSL and the PyInstaller bootloader under their own licences; see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

@@ -27,7 +27,7 @@ jobs:
         run: |
           # the licence of the Python build bundled in the exe, with its libraries' notices
           python -c "import shutil, sys, pathlib; shutil.copy(pathlib.Path(sys.base_prefix) / 'LICENSE.txt', 'PYTHON-LICENSE.txt')"
-          Compress-Archive -Path dist/strafe-review.exe, WINDOWS.txt, LICENSE, THIRD-PARTY-NOTICES.txt, PYTHON-LICENSE.txt -DestinationPath strafe-review-windows.zip
+          Compress-Archive -Path dist/strafe-review.exe, WINDOWS.txt, LICENSE, THIRD-PARTY-NOTICES.txt, PYTHON-LICENSE.txt, licenses/OpenSSL-LICENSE.txt -DestinationPath strafe-review-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: strafe-review-windows

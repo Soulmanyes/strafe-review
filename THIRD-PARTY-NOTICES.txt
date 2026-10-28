@@ -3,10 +3,12 @@ Third-party software in strafe-review.exe
 
 Strafe Review's own code is CC0 1.0 (see LICENSE). The Windows exe also contains:
 
-- Python (the CPython runtime and standard library), and the libraries the Windows build of Python
-  ships with it (for example OpenSSL, libffi, bzip2, xz and zlib). Licence: the Python Software
-  Foundation License, with the notices of those libraries; the full text is in
-  PYTHON-LICENSE.txt next to this file.
+- Python 3.13 (the CPython runtime and standard library), with libffi and the Microsoft Visual C++
+  runtime (Microsoft Distributable Code). Licence: the Python Software Foundation License, with the
+  notices of those parts; the full text is in PYTHON-LICENSE.txt next to this file.
+
+- OpenSSL 3 (libssl and libcrypto, for HTTPS when looking for updates). Licence: Apache License 2.0,
+  in OpenSSL-LICENSE.txt next to this file. https://www.openssl.org/
 
 - The PyInstaller bootloader, which unpacks and starts the program. Licence: GNU GPL 2.0 or later
   with the PyInstaller bootloader exception, which allows shipping programs built with it under
