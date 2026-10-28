@@ -171,7 +171,10 @@ h1 { font-size: 17px; margin: 0; }
 	gap: 8px;
 	overflow-y: auto;
 }
-#head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 15px; }
+/* one row whatever the recording: notes on it must not push the page down */
+#head { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px 12px; font-size: 15px; min-width: 0; }
+#head > * { flex-shrink: 0; white-space: nowrap; }
+#head > .muted { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #head b { font-size: 17px; }
 .muted { color: var(--muted); }
 #toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; position: relative; }

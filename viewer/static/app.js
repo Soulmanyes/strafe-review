@@ -589,15 +589,18 @@ function showHead() {
 		`${cur.jumps.filter((j) => j.num > 0).length} jumps`,
 		when(h.started)
 	].join(' · ');
+	facts.title = facts.textContent; // the line stays one row, so a narrow window cuts it short
 	el.append(name, labelChip(h), reasonChip(h), facts);
-	const note = (cls, text) => {
+	// notes are short chips on the same row (the full text on hover), so the page below doesn't move
+	const note = (cls, text, tip) => {
 		const n = document.createElement('span');
 		n.className = `chip ${cls}`;
 		n.textContent = text;
+		n.title = tip;
 		el.append(n);
 	};
-	if (cur.d.coarse) note('replay', 'Speed updates every few ticks (spectated live): gain per jump only, checks off');
-	else if (cur.d.derived) note('replay', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
+	if (cur.d.coarse) note('replay', 'Coarse speed', 'Speed updates every few ticks (spectated live): gain per jump only, checks off');
+	else if (cur.d.derived) note('replay', 'Rebuilt from speed', 'Gain and angle rebuilt from speed (no tick stats in this recording)');
 }
 
 // ---------- run stats ----------
