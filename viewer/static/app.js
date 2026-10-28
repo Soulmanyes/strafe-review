@@ -71,6 +71,10 @@ const CMP_KEY = 'strafe-review-compare'; // { "<map>|<interval>": choice }
 const ALIGN_KEY = 'strafe-review-align';
 const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
+const FILTERS_KEY = 'strafe-review-filters'; // { map, tick, style, result, tag }: "" = all
+// Momentum's Style enum (common/web/enums/style.enum.ts); half-sideways is two values, bhop and surf
+const STYLES = ['Normal', 'Half-Sideways (bhop)', 'Half-Sideways (surf)', 'Sideways', 'W-Only', 'A/D-Only', 'S-Only', 'Backwards', 'Pro', 'Teleport'];
+const RESULTS = { finish: 'Finished', other: 'Not finished' };
 const YAW_SIGNED_KEY = 'strafe-review-yaw-signed';
 const YAW_SUB = { size: '°/tick vs optimal', signed: '°/tick, + left, - right' };
 // A drill: an own attempt that didn't finish and landed this many jumps or fewer (jump 1 or SSJ practice)
@@ -113,18 +117,90 @@ function when(ms) {
 	return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+// ---------- filters ----------
+
+const FILTERS = [
+	['map', 'f-map', (a) => a.dir, (v) => v],
+	['tick', 'f-tick', (a) => String(Math.round(1 / a.interval)), (v) => `${v} tick`],
+	['style', 'f-style', (a) => String(a.style ?? 0), (v) => STYLES[v] || `style ${v}`],
+	['result', 'f-result', (a) => (a.reason === 'finish' ? 'finish' : 'other'), (v) => RESULTS[v]],
+	['tag', 'f-tag', (a) => a.tags || [], (v) => v]
+];
+
+function loadFilters() {
+	try {
+		return JSON.parse(localStorage.getItem(FILTERS_KEY)) || {};
+	} catch {
+		return {};
+	}
+}
+
+// Each select lists only the values the saved attempts have. A choice that no attempt has any more
+// shows as All; a select with a single value is greyed out.
+function fillFilters() {
+	const saved = loadFilters();
+	const pool = list.filter((a) => !isFragment(a));
+	for (const [key, id, get, name] of FILTERS) {
+		const vals = [...new Set(pool.flatMap((a) => get(a)))].sort((x, y) => x.localeCompare(y, undefined, { numeric: true }));
+		const sel = $(id);
+		sel.replaceChildren(new Option('All', ''), ...vals.map((v) => new Option(name(v), v)));
+		sel.value = vals.includes(saved[key]) ? saved[key] : '';
+		sel.disabled = key === 'tag' ? !vals.length : vals.length < 2;
+	}
+}
+
+function passesFilters(a) {
+	for (const [, id, get] of FILTERS) {
+		const want = $(id).value;
+		if (want && ![get(a)].flat().includes(want)) return false;
+	}
+	return true;
+}
+
+function filtersChanged() {
+	const out = {};
+	for (const [key, id] of FILTERS) if ($(id).value) out[key] = $(id).value;
+	localStorage.setItem(FILTERS_KEY, JSON.stringify(out));
+	renderList();
+}
+
+// Listed: not a replay fragment, a drill only with "Show drills", and through the filters
+function shown(a) {
+	return ($('show-drills').checked || !isDrill(a)) && !isFragment(a) && passesFilters(a);
+}
+
 // ---------- list ----------
 
 async function loadList() {
 	list = await (await fetch('/api/attempts')).json();
+	fillFilters();
+	fillTagList();
+	renderList();
+	findMistakes(); // the takeoff baseline comes from the list
+	if (cur) {
+		fillCompare();
+		const h = choiceHead();
+		if ((h ? `${h.dir}/${h.id}` : null) !== (ghost ? ghost.key : null)) {
+			await setGhostSafe();
+			showHead();
+			draw();
+		}
+	}
+}
+
+function renderList() {
 	const box = $('list');
 	box.replaceChildren();
 	if (!list.length) box.textContent = 'No attempts saved yet.';
-	const showDrills = $('show-drills').checked;
 	$('drill-count').textContent = list.filter(isDrill).length;
-	// the open attempt stays listed even when it is a hidden drill
+	// the open attempt stays listed even when it is a hidden drill or filtered out
 	const openKey = cur ? `${cur.head.dir}/${cur.head.id}` : location.hash.slice(1).split('/').slice(0, 2).join('/');
-	const visible = list.filter((a) => `${a.dir}/${a.id}` === openKey || ((showDrills || !isDrill(a)) && !isFragment(a)));
+	const visible = list.filter((a) => `${a.dir}/${a.id}` === openKey || shown(a));
+	const total = list.filter((a) => !isFragment(a)).length;
+	const hits = list.filter(shown).length;
+	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
+	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
+	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value);
 	const maps = [...new Set(visible.map((a) => a.dir))];
 	for (const m of maps) {
 		const title = document.createElement('div');
@@ -143,21 +219,109 @@ async function loadList() {
 			const t = a.runTime ? `${a.runTime.toFixed(2)} s` : '';
 			r2.textContent = [when(a.started), t, `${a.runGaps ?? a.gaps} missed`].filter(Boolean).join(' · ');
 			b.append(r1, r2);
+			if (a.tags?.length || a.note) {
+				const r3 = document.createElement('div');
+				r3.className = 'row3';
+				for (const t of a.tags || []) {
+					const c = document.createElement('span');
+					c.className = 'chip tag';
+					c.textContent = t;
+					r3.append(c);
+				}
+				if (a.note) {
+					const n = document.createElement('span');
+					n.className = 'note-snip';
+					n.textContent = a.note;
+					n.title = a.note;
+					r3.append(n);
+				}
+				b.append(r3);
+			}
 			b.onclick = () => open(a.dir, a.id);
 			box.append(b);
 		}
 	}
-	markSelected();
-	findMistakes(); // the takeoff baseline comes from the list
-	if (cur) {
-		fillCompare();
-		const h = choiceHead();
-		if ((h ? `${h.dir}/${h.id}` : null) !== (ghost ? ghost.key : null)) {
-			await setGhostSafe();
-			showHead();
-			draw();
-		}
+	if (list.length && !visible.length) {
+		const n = document.createElement('div');
+		n.className = 'muted';
+		n.textContent = 'No attempt matches the filters.';
+		box.append(n);
 	}
+	markSelected();
+}
+
+// ---------- note and tags ----------
+
+const listEntry = () => cur && list.find((a) => a.dir === cur.head.dir && a.id === cur.head.id);
+
+function fillTagList() {
+	const tags = [...new Set(list.flatMap((a) => a.tags || []))].sort((x, y) => x.localeCompare(y));
+	$('tag-list').replaceChildren(...tags.map((t) => new Option(t)));
+}
+
+// The editor sits outside #head, so a list refresh (a new attempt saved) never wipes what is being typed
+function showMeta() {
+	const e = listEntry();
+	$('meta').hidden = !cur;
+	if (!cur) return;
+	const tags = e?.tags || [];
+	const box = $('tags');
+	box.replaceChildren();
+	for (const t of tags) {
+		const c = document.createElement('span');
+		c.className = 'chip tag';
+		c.textContent = t;
+		const x = document.createElement('button');
+		x.className = 'tag-x';
+		x.textContent = '×';
+		x.title = `Remove tag "${t}"`;
+		x.onclick = () => saveMeta({ tags: tags.filter((o) => o !== t) });
+		c.append(x);
+		box.append(c);
+	}
+	if (document.activeElement !== $('note')) $('note').value = e?.note || '';
+	$('meta-status').textContent = '';
+}
+
+async function saveMeta(change) {
+	const e = listEntry();
+	if (!e) return;
+	const key = `${e.dir}/${e.id}`;
+	const body = { note: e.note || '', tags: e.tags || [], ...change };
+	$('meta-status').textContent = 'Saving…';
+	let res;
+	try {
+		res = await fetch(`/api/meta/${encodeURIComponent(e.dir)}/${encodeURIComponent(e.id)}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+	} catch {
+		res = null;
+	}
+	if (!res || !res.ok) {
+		$('meta-status').textContent = res && res.status === 404 ? 'Not saved: restart the viewer (new route)' : 'Not saved';
+		return;
+	}
+	const saved = await res.json();
+	// the list may have been fetched again meanwhile: write into whichever entry is current
+	const now = list.find((a) => `${a.dir}/${a.id}` === key);
+	if (now) Object.assign(now, saved);
+	fillFilters();
+	fillTagList();
+	renderList();
+	if (cur && `${cur.head.dir}/${cur.head.id}` === key) {
+		showMeta();
+		$('meta-status').textContent = 'Saved';
+	}
+}
+
+function addTag() {
+	const t = $('tag-add').value.trim();
+	if (!t) return;
+	$('tag-add').value = '';
+	const tags = listEntry()?.tags || [];
+	if (!tags.some((o) => o.toLowerCase() === t.toLowerCase())) saveMeta({ tags: [...tags, t] });
 }
 
 function markSelected() {
@@ -180,7 +344,8 @@ async function open(dir, id) {
 	fillCompare();
 	await setGhostSafe();
 	showHead();
-	markSelected();
+	showMeta();
+	renderList(); // lists it even when the filters or the drill toggle hide it
 	findMistakes();
 	whole();
 }
@@ -1040,7 +1205,26 @@ $('yaw-signed').onchange = () => {
 $('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
 $('show-drills').onchange = () => {
 	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');
-	loadList();
+	renderList();
+};
+for (const [, id] of FILTERS) $(id).onchange = filtersChanged;
+$('f-clear').onclick = () => {
+	for (const [, id] of FILTERS) $(id).value = '';
+	filtersChanged();
+};
+$('tag-add').onkeydown = (e) => {
+	if (e.key === 'Enter') addTag();
+};
+$('note').onkeydown = (e) => {
+	if (e.key === 'Enter') $('note').blur();
+	if (e.key === 'Escape') {
+		$('note').value = listEntry()?.note || '';
+		$('note').blur();
+	}
+};
+$('note').onchange = () => {
+	const v = $('note').value.trim();
+	if (v !== (listEntry()?.note || '')) saveMeta({ note: v });
 };
 // Check settings open as a panel under the toolbar, over the graph
 $('checks-btn').onclick = () => {
@@ -1102,7 +1286,7 @@ Promise.all([
 		await open(dir, id);
 		if (what === 'j1' && cur && cur.j1 >= 0) zoomTo(cur.jumps[cur.j1]);
 	} else {
-		const first = list.find((a) => ($('show-drills').checked || !isDrill(a)) && !isFragment(a)) || list[0];
+		const first = list.find(shown) || list.find((a) => !isFragment(a)) || list[0];
 		if (first) open(first.dir, first.id);
 	}
 });

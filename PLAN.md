@@ -386,6 +386,27 @@ The owner asked for a separate page that updates by itself the moment an attempt
 - **Filters** by map, tickrate, style (normal, sideways, HSW) and finished or failed.
 - **PNG export** of a graph or jump view.
 
+#### Notes, tags and filters v1 (2026-10-28)
+
+- **Storage:** `<store>/meta.json` = `{"version": 1, "attempts": {"<map dir>/<id>": {"note", "tags"}}}`. The attempt files stay untouched (the collector owns them, and the server caches their heads by mtime and size). An attempt with no note and no tags has no entry. A deleted attempt's entry stays behind, which does no harm.
+- **Server:** `/api/attempts` merges `note` (`""`) and `tags` (`[]`) into a copy of each head, so the drill and compare pages get them too. `POST /api/meta/<map>/<id>` with `{"note", "tags"}` stores them and answers with what was stored.
+  - Trimming: the note to 2000 characters, each tag to 40, at most 20 tags. Spaces are collapsed and tags are deduped ignoring case.
+  - Writes go through a lock, a temp file and a rename.
+  - A POST is refused (403) unless it is `application/json` with a Host (and Origin, if sent) of 127.0.0.1 or localhost on the viewer's port. Without this, any web page could send a plain-text POST to localhost.
+  - Bodies over 16 KiB get 413. A POST for an attempt with no file gets 404.
+- **Main page:** a row under the header holds:
+  - tag chips with × to remove
+  - an "Add tag" box (Enter; old tags offered as suggestions)
+  - a note box (saves on Enter or when clicking away; Esc undoes)
+
+  The row sits outside `#head`, so a live list refresh never wipes what is being typed. List items show the tags and the note's first line.
+- **Filters** (sidebar, under "Show drills"): map, tickrate, style (Momentum's style names; half-sideways is 1 = bhop, 2 = surf), result (finished / not finished) and tag.
+  - Each select lists only values the saved attempts have. A select with a single value is greyed out; the tag select only when there are no tags.
+  - Choices are saved in localStorage `strafe-review-filters`.
+  - The filters stack with "Show drills" and the replay-fragment rule. "N of M shown" also counts matching drills that the drill toggle hides.
+  - The open attempt is always listed. On load, the first listed attempt opens.
+- **Checks:** server round trip on a scratch store (save, dedupe, 403 for text/plain, foreign Origin and foreign Host, 404, 413, clearing). Screenshot check with stubbed fetch and EventSource and a faked second style.
+
 ## Later / undecided
 
 - **Progress over time (non-urgent):** graph stats across saved attempts over days and weeks, such as jump-1 gain, sync, yaw ratio and mistake counts.

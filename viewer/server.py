@@ -12,11 +12,13 @@ Routes:
                              j1Takeoff, the jump-1 takeoff speed, j1Land, its landing speed
                              (null if it didn't land before the run end), landed, jumps 1+ that
                              landed before the run end, and runGaps, missed ticks inside
-                             the run), newest first
+                             the run), newest first; note and tags from meta.json are merged in
   /api/attempt/<map>/<id>    one attempt, the .json.gz file sent as it is
   /api/mouse                 sensitivity and m_yaw from the game's config.cfg now, for attempts
                              recorded before the recorder stamped them (null if unreadable)
   /api/events                server-sent events: "attempt" with {dir, id} when a new attempt is saved
+  POST /api/meta/<map>/<id>  {"note": str, "tags": [str]}: sets the attempt's note and tags, answers
+                             with what was stored. Kept in <store>/meta.json, not in the attempt file.
 """
 import argparse
 import gzip
@@ -25,6 +27,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +42,12 @@ CVAR = re.compile(r'^\s*(sensitivity|m_yaw)\s+"([^"]*)"', re.MULTILINE)
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
+META_FILE = "meta.json"  # {"version": 1, "attempts": {"<dir>/<id>": {"note": str, "tags": [str]}}}
+_meta_lock = threading.Lock()
+MAX_BODY = 16384
+MAX_NOTE = 2000
+MAX_TAG = 40
+MAX_TAGS = 20
 POLL = 0.5  # seconds between store scans for /api/events
 PING = 15  # seconds between keep-alive comments
 
@@ -119,11 +128,55 @@ def head(path):
     return data
 
 
+def read_meta(store):
+    """meta.json's attempts map, {} if there is none or it can't be read."""
+    try:
+        with open(store / META_FILE) as f:
+            return json.load(f).get("attempts") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def clean_meta(body):
+    """{"note", "tags"} from a POST body, trimmed; tags deduped ignoring case. Raises TypeError."""
+    if not isinstance(body, dict):
+        raise TypeError("body must be an object")
+    note = body.get("note", "")
+    tags = body.get("tags", [])
+    if not isinstance(note, str) or not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        raise TypeError("note must be a string and tags a list of strings")
+    note = note.strip()[:MAX_NOTE]
+    out, seen = [], set()
+    for t in tags:
+        t = " ".join(t.split())[:MAX_TAG]
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return {"note": note, "tags": out[:MAX_TAGS]}
+
+
+def write_meta(store, key, entry):
+    """Store one attempt's note and tags (an empty entry is removed), written to a temp file and renamed."""
+    with _meta_lock:
+        meta = read_meta(store)
+        if entry["note"] or entry["tags"]:
+            meta[key] = entry
+        else:
+            meta.pop(key, None)
+        tmp = store / f".{META_FILE}.tmp"
+        with open(tmp, "w") as f:
+            json.dump({"version": 1, "attempts": meta}, f, indent=1, sort_keys=True)
+        os.replace(tmp, store / META_FILE)
+
+
 def attempts(store):
     out = []
+    meta = read_meta(store)
     for path in store.glob("*/*.json.gz"):
         try:
-            out.append(head(path))
+            h = head(path)  # the cached dict: copied below, never changed
+            m = meta.get(f"{path.parent.name}/{h.get('id')}") or {}
+            out.append({**h, "note": m.get("note", ""), "tags": m.get("tags", [])})
         except (OSError, ValueError, EOFError) as e:
             print(f"skipped {path}: {e}", file=sys.stderr)
     out.sort(key=lambda a: a.get("started") or 0, reverse=True)
@@ -186,6 +239,43 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass
+
+    def local_request(self):
+        """A POST from this viewer's own page: JSON, from 127.0.0.1/localhost on this port. Any page in
+        the browser can send a plain-text POST to localhost; this refuses those."""
+        port = self.server.server_address[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        origin = self.headers.get("Origin")
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        return (
+            ctype == "application/json"
+            and self.headers.get("Host") in hosts
+            and (origin is None or origin.removeprefix("http://") in hosts)
+        )
+
+    def do_POST(self):
+        parts = self.path.split("?", 1)[0].strip("/").split("/")
+        if not (len(parts) == 4 and parts[:2] == ["api", "meta"] and MAP.fullmatch(parts[2]) and ID.fullmatch(parts[3])):
+            return self.fail(404, "not found")
+        if not self.local_request():
+            return self.fail(403, "forbidden")
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            size = -1
+        if not 0 < size <= MAX_BODY:
+            return self.fail(413 if size > MAX_BODY else 400, "bad body size")
+        if not (self.store / parts[2] / f"{parts[3]}.json.gz").is_file():
+            return self.fail(404, "no such attempt")
+        try:
+            entry = clean_meta(json.loads(self.rfile.read(size)))
+        except (ValueError, TypeError) as e:
+            return self.fail(400, str(e))
+        try:
+            write_meta(self.store, f"{parts[2]}/{parts[3]}", entry)
+        except OSError as e:
+            return self.fail(500, f"could not save: {e}")
+        self.send(200, json.dumps(entry).encode(), "application/json")
 
     def do_GET(self):
         parts = self.path.split("?", 1)[0].strip("/").split("/")

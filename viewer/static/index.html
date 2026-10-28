@@ -16,10 +16,25 @@
 	<label class="drill-toggle" title="Drills: own attempts that didn't finish and landed 7 jumps or fewer. The drill page always uses them.">
 		<input type="checkbox" id="show-drills"><span>Show drills (<span id="drill-count">0</span>)</span>
 	</label>
+	<div id="filters">
+		<label>Map <select id="f-map"></select></label>
+		<label>Tick <select id="f-tick"></select></label>
+		<label>Style <select id="f-style"></select></label>
+		<label>Result <select id="f-result"></select></label>
+		<label>Tag <select id="f-tag"></select></label>
+		<div class="f-foot"><span id="f-count" class="muted"></span><button id="f-clear" title="Show every attempt again">Clear filters</button></div>
+	</div>
 	<div id="list"></div>
 </aside>
 <main id="main">
 	<header id="head"><span class="muted">Pick an attempt on the left.</span></header>
+	<div id="meta" hidden>
+		<div id="tags"></div>
+		<input id="tag-add" list="tag-list" maxlength="40" placeholder="Add tag, Enter" title="Type a tag and press Enter; pick an old one from the list">
+		<datalist id="tag-list"></datalist>
+		<input id="note" maxlength="2000" placeholder="Note (e.g. new sens), saved when you press Enter or click away">
+		<span id="meta-status" class="hint"></span>
+	</div>
 	<div id="toolbar">
 		<button id="whole">Whole attempt</button>
 		<button id="jump1">Jump 1</button>
