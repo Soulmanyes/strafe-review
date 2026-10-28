@@ -41,17 +41,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "collector"))
 import collector  # found through the path above
 
-STATIC = Path(__file__).resolve().parent / "static"
+STATIC = collector.ROOT / "viewer" / "static"
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 # Same characters collector.map_dir() keeps; a leading dot is refused so ".." never names a folder
 MAP = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 ID = re.compile(r"[a-z0-9]{1,40}")
-GAME_CFG = os.path.join(collector.GAME, "cfg", "config.cfg")
 CVAR = re.compile(r'^\s*(sensitivity|m_yaw)\s+"([^"]*)"', re.MULTILINE)
 STATIC_FILE = re.compile(r"[a-z0-9-]+\.(html|js|css)")
 
 _heads = {}  # path -> (mtime_ns, size, head)
-MOM_DIR = Path(GAME_CFG).parent.parent  # replayFile paths are relative to this
+MOM_DIR = None  # Momentum's game folder; replayFile paths are relative to it
 # .mtv header (formats 1 and 2 alike here, worked out from online replays, 2026-10-28): "MMTV", int32 version,
 # int64 date, map name [64], map hash [41], uint16, float tick interval at 0x7b, uint64 SteamID,
 # player name [33], one byte, then the run time as a double at 0xa9
@@ -111,7 +110,7 @@ def replay_run_time(data):
     """The run time stored in the attempt's replay file, or None when the file is gone or doesn't look
     like a format 1 or 2 replay with the attempt's tick interval."""
     rel = data.get("replayFile")
-    if not rel or rel.startswith("/") or ".." in Path(rel).parts:
+    if not rel or rel.startswith(("/", "\\")) or Path(rel).is_absolute() or ".." in Path(rel).parts:
         return None
     try:
         with open(MOM_DIR / rel, "rb") as f:
@@ -394,13 +393,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--store", default=str(collector.STORE))
-    ap.add_argument("--game-cfg", default=GAME_CFG, help="Momentum's cfg/config.cfg")
-    ap.add_argument("--log", default=collector.LOG, help="the console log to collect from (con_logfile)")
+    ap.add_argument("--game", default=collector.GAME, help="Momentum's game folder (holds cfg/ and yaw.log)")
+    ap.add_argument("--game-cfg", help="Momentum's cfg/config.cfg (default: in --game)")
+    ap.add_argument("--log", help="the console log to collect from (con_logfile; default: yaw.log in --game)")
     ap.add_argument("--no-collect", action="store_true", help="only serve, don't collect")
     ap.add_argument("--no-browser", action="store_true", help="don't open the page in the browser")
     args = ap.parse_args()
+    if not args.game and not (args.game_cfg and (args.log or args.no_collect)):
+        sys.exit(f"Strafe Review: {collector.NOT_FOUND}, or pass --game")
     Handler.store = Path(args.store)
-    Handler.game_cfg = Path(args.game_cfg)
+    Handler.game_cfg = Path(args.game_cfg or os.path.join(args.game, "cfg", "config.cfg"))
+    if args.log is None and args.game:
+        args.log = os.path.join(args.game, "yaw.log")
     global MOM_DIR
     MOM_DIR = Handler.game_cfg.parent.parent
     try:

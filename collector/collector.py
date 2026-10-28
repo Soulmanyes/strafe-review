@@ -5,8 +5,9 @@ Usage: collector.py [yaw.log] [--once] [--store DIR]
 
 Reads the log from the start, then follows it. Each complete attempt is saved as
 <store>/<map>/<id>.json.gz, where <store> defaults to
-~/.local/share/strafe-review/attempts. An attempt already on disk is skipped, so
-reading the same log again is safe. --once reads to the end of the log and exits.
+~/.local/share/strafe-review/attempts (%LOCALAPPDATA%\\strafe-review\\attempts on
+Windows). An attempt already on disk is skipped, so reading the same log again is safe.
+--once reads to the end of the log and exits.
 """
 import gzip
 import json
@@ -17,14 +18,15 @@ import tempfile
 import time
 from pathlib import Path
 
+import steam
 from srrec import Assembler, body
 
-GAME = os.environ.get(
-    "MOMENTUM_DIR",
-    os.path.expanduser("~/.local/share/Steam/steamapps/common/Momentum Mod Playtest/momentum"),
-)
-STORE = Path(os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))) / "strafe-review" / "attempts"
-LOG = os.path.join(GAME, "yaw.log")  # con_logfile, shared with Source Yaw's yaws.cfg
+# The repo, or PyInstaller's unpacked bundle (it holds recorder/ and viewer/static/ the same way)
+ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+GAME = steam.find_game()  # None if Momentum isn't found; then the game folder must be given
+STORE = steam.data_dir() / "attempts"
+LOG = os.path.join(GAME, "yaw.log") if GAME else None  # con_logfile, shared with Source Yaw's yaws.cfg
+NOT_FOUND = "Momentum Mod not found in any Steam library; set MOMENTUM_DIR to its momentum folder"
 POLL = 0.25  # seconds between reads when the log has nothing new
 STALE = 600  # seconds after which an attempt without its end line is dropped
 
@@ -132,6 +134,8 @@ def main():
         store = Path(args[i + 1])
         del args[i:i + 2]
     log = args[0] if args else LOG
+    if log is None:
+        sys.exit(f"collector: {NOT_FOUND}, or pass the log")
     try:
         run(log, store, once)
     except KeyboardInterrupt:

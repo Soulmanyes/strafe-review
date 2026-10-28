@@ -19,8 +19,13 @@ Next: progress over time, tuning the check thresholds. See [PLAN.md](PLAN.md) an
 
 ## Setup (so far)
 
-1. `recorder/install.sh` copies the recorder HUD script into Momentum's `custom/` folder and adds a marked block to `cfg/autoexec.cfg` (`con_logfile yaw.log`, and `engine_no_focus_sleep 0` so replays watched while tabbed out record every tick). The first run keeps a copy as `autoexec.cfg.bak-strafe-review`. `recorder/uninstall.sh` removes both. Type `panorama_reload` in game after updating the recorder.
-2. `collector/install.sh` links `strafe-review-run` into `~/.local/bin`.
+1. `python install.py` finds Momentum through Steam's library folders (or `MOMENTUM_DIR`, or `--game DIR`) and:
+   - copies the recorder HUD script into Momentum's `custom/` folder (type `panorama_reload` in game after updating it),
+   - adds a marked block to `cfg/autoexec.cfg` (`con_logfile yaw.log`, and `engine_no_focus_sleep 0` so replays watched while tabbed out record every tick; the first run keeps a copy as `autoexec.cfg.bak-strafe-review`; restart the game after installing),
+   - on Linux, links `strafe-review-run` into `~/.local/bin`.
+
+   `python install.py --uninstall` takes all three out again.
+2. Keep the repo where it is: the link and the launch option run it from there.
 3. Set Momentum Mod's Steam launch options to `strafe-review-run sourceyaw-run %command%`. When the game starts, it starts `viewer/server.py` as the systemd user unit `strafe-review`, which stays running after the game quits (`systemctl --user stop strafe-review` to stop it). When the game quits, the review page opens in the default browser.
 4. The server collects attempts from `yaw.log` into `~/.local/share/strafe-review/attempts/<map>/` and serves the review page on http://127.0.0.1:8765/. Started by hand, it opens the page in the default browser: `python viewer/server.py` (`--port` to change the port, `--no-collect` to only serve, `--no-browser` to skip the tab).
 

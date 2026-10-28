@@ -2,7 +2,7 @@
 # Steam launch option wrapper: makes sure Strafe Review (viewer/server.py, which also
 # runs the collector) is running while Momentum Mod runs.
 #   strafe-review-run sourceyaw-run %command%
-# collector/install.sh links it into ~/.local/bin.
+# install.py (in the repo root) links it into ~/.local/bin.
 # The server is started as its own systemd user unit, outside Steam's process tree, so it
 # keeps running after the game quits (review after playing) and Steam doesn't wait for it.
 # When the game quits, the page opens in the default browser, ready to review (the server
