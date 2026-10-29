@@ -12,11 +12,27 @@ The review page has three parts:
 
 In game, the recorder can show a 3-row line after jump 1 lands: landing speed, gain % per strafe and the biggest mistake (off by default, see below).
 
-Replays played to the end count as finishes. Bonus tracks are recorded and listed per bonus ("surf_artois: b1"), and 66-tick bhop works next to 66-tick surf.
+Replays played to the end count as finishes (see [Replays](#replays)). Bonus tracks are recorded and listed per bonus ("surf_artois: b1"), and 66-tick bhop works next to 66-tick surf.
 
 Run stats, graphs and paths on `/` and `/compare` each have Copy and Save buttons: Copy puts a picture of that section on the clipboard, Save downloads it as a PNG.
 
 Everything stays on your PC: the page runs at http://127.0.0.1:8765/ and the only thing it asks the internet for is whether a new release is out.
+
+## Replays
+
+Play any replay in Momentum (your own or someone else's) and it is recorded like a run. A replay doesn't carry the game's per-tick gain stats, so gain and angle are worked out from speed; on your own run and its replay they come out the same.
+
+- **Missed ticks are filled from the replay.** The recorder reads the game once per frame, so a frame that takes longer than a tick loses that tick. When a replay sits paused at its end (where it stops by itself), the recorder steps the paused replay back to each tick it missed, reads it, and returns to the end. The view jumps around for a moment, then a note at the top of the screen says the replay was saved and how many missed ticks were filled. Leave the replay paused at the end until the note shows; a replay you leave earlier keeps its missed ticks. This is the only time it controls the game, and only the replay's playback.
+- **View angles.** A replay plays its view angles back about 60 ms late (its speed and keys are on time), and the page moves them back. On every tick with a strafe key held, the yaw is taken from the game's own wish velocity, which gives the exact angle the movement used, on live runs as well as replays. The few ticks around a key switch with both or no strafe keys held keep the measured yaw.
+
+## What changed in 1.1.0
+
+Version 1.1.0 changes how recordings are read, so numbers on attempts you already have shift a little when you open them again:
+
+- Yaw speed, Angle and everything worked out from them (strafes, reversals, key timing, mistakes) now use the exact yaw from the wish velocity instead of the per-frame sample. Single-tick spikes in yaw speed get smaller, and some mistakes may appear or go away.
+- Replays get the key timing checks, sync and key lag like your own runs (before, their keys were thought to run ahead of the turn; it is the view angles that run late).
+- Replays recorded from now on have their missed ticks filled (above). Older replay recordings keep theirs; play the replay to the end once more to record it again.
+- Small fixes: switching between a run and a replay no longer moves the graph, the header stays on one row, and graph scales no longer depend on missed ticks.
 
 ## Requirements
 
@@ -51,7 +67,7 @@ Attempts are kept in `~/.local/share/strafe-review/attempts`.
 
 ## Updates and settings
 
-- The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. It never updates while a game is being played. A copy running from this repo only reports new versions: `git pull` brings them.
+- The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. It never updates while a game is being played. A copy running from this repo only reports new versions: `git pull` brings them, then `python install.py` again when the recorder changed (it did in 1.1.0) and `panorama_reload` in the game console. The exe installs the recorder by itself at every start.
 - **Show the jump-1 line in game** (bottom left of the main page) turns on the in-game line after jump 1. It is off by default so it doesn't land on top of anyone's own HUD. Type `panorama_reload` in the game console after changing it.
 
 ## Building the exe

@@ -3,7 +3,9 @@ Strafe Review for Windows (test build)
 
 Strafe Review records your Momentum Mod bhop attempts and shows them on a review page in your
 browser (graphs of each jump, mistakes, comparisons). It only reads the game's console log and adds
-a HUD script; it sends nothing anywhere. The page runs on your own PC at http://127.0.0.1:8765/
+a HUD script; it sends nothing anywhere. (When a replay sits paused at its end, the HUD script steps
+that replay back to fill ticks it missed while playing; nothing else in the game is touched.)
+The page runs on your own PC at http://127.0.0.1:8765/
 
 This is an untested build. Windows may warn about it, because the exe isn't signed.
 
