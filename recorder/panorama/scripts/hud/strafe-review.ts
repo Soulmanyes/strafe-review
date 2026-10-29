@@ -402,6 +402,9 @@ const B_LEFT = 1 << 7;
 const B_RIGHT = 1 << 8;
 const B_MOVELEFT = 1 << 9;
 const B_MOVERIGHT = 1 << 10;
+const B_FORWARD = 1 << 3;
+const B_BACK = 1 << 4;
+const EXACT_YAW_MAX = 10; // data.js: a wish-velocity yaw further than this from the recorded one isn't used
 
 interface Rows {
 	n: number;
@@ -470,6 +473,8 @@ function parseRows(rows: string[]): Rows {
 	const d: Rows = { n, tick: [], gain: [], ideal: [], ratio: [], vz: [], buttons: [], speed: [], gap: [], ground: [], yaws: [], key: [] };
 	const yaw: number[] = [];
 	const yawd: number[] = [];
+	const wx: number[] = [];
+	const wy: number[] = [];
 	for (let i = 0; i < n; i++) {
 		const v = rows[i].split(',');
 		d.tick.push(+v[0]);
@@ -481,7 +486,10 @@ function parseRows(rows: string[]): Rows {
 		d.buttons.push(+v[10]);
 		d.speed.push(Math.hypot(+v[5], +v[6]));
 		d.gap.push(i > 0 ? d.tick[i] - d.tick[i - 1] - 1 : 0);
+		wx.push(+v[14]);
+		wy.push(+v[15]);
 	}
+	exactYaw(d, yaw, wx, wy);
 	// Ground: vz exactly 0, except an apex between rising and falling
 	for (let i = 0; i < n; i++) {
 		const prev = i > 0 ? d.vz[i - 1] : 0;
@@ -501,6 +509,39 @@ function parseRows(rows: string[]): Rows {
 		d.key.push(!d.ground[i] && Math.abs(d.yaws[i]) > 0.3 ? Math.sign(d.yaws[i]) : 0);
 	}
 	return d;
+}
+
+// data.js parse(): the exact yaw from the wish velocity on ticks with a strafe key, the recorded yaw moved by
+// the offset to it (linear between exact ticks) elsewhere. Needs wish velocity on some air row.
+function exactYaw(d: Rows, yaw: number[], wx: number[], wy: number[]) {
+	const n = d.n;
+	let has = false;
+	for (let i = 0; i < n && !has; i++) {
+		const v = d.vz[i];
+		const air = v !== 0 || (i > 0 && i < n - 1 && d.vz[i - 1] > 0 && d.vz[i + 1] < 0);
+		if (air && Math.hypot(wx[i], wy[i]) > 0.1) has = true;
+	}
+	if (!has) return;
+	const corr: number[] = [];
+	for (let i = 0; i < n; i++) {
+		const b = d.buttons[i];
+		const f = (b & B_FORWARD ? 1 : 0) - (b & B_BACK ? 1 : 0);
+		const sd = (b & B_MOVERIGHT ? 1 : 0) - (b & B_MOVELEFT ? 1 : 0);
+		corr.push(NaN);
+		if ((!f && !sd) || !(Math.hypot(wx[i], wy[i]) >= 1)) continue;
+		const c = wrap180(((Math.atan2(wy[i], wx[i]) - Math.atan2(-sd, f)) * 180) / Math.PI - yaw[i]);
+		if (Math.abs(c) <= EXACT_YAW_MAX) corr[i] = c;
+	}
+	let prev = -1;
+	for (let i = 0; i <= n; i++) {
+		if (i < n && !Number.isFinite(corr[i])) continue;
+		for (let k = prev + 1; k < i; k++) {
+			const c = prev < 0 ? (i < n ? corr[i] : 0) : i >= n ? corr[prev] : corr[prev] + ((corr[i] - corr[prev]) * (k - prev)) / (i - prev);
+			yaw[k] = wrap180(yaw[k] + c);
+		}
+		if (i < n) yaw[i] = wrap180(yaw[i] + corr[i]);
+		prev = i;
+	}
 }
 
 // data.js findJumps(): jump 1 is the air segment in progress at the timer start, else the next one
@@ -813,6 +854,7 @@ const COL_RTICK = COLS.indexOf('rtick');
 
 interface Rescan {
 	todo: number[]; // rticks to read, highest first
+	wanted: number; // todo's length at the start
 	offset: number; // tick - rtick while the replay played
 	total: number;
 	target: number; // curtick to seek to (rtick - 1), -1 between rows, -2 going back to the end
@@ -843,7 +885,10 @@ function replayEnd() {
 		offsets.set(off, (offsets.get(off) || 0) + 1);
 	}
 	// the run time seen while it played: the rescan's seeks move the timer (one read 0.005 s after them)
-	if (have.size < 2) return endAttempt('finish', a.runTime);
+	if (have.size < 2) {
+		endAttempt('finish', a.runTime);
+		return rescanNote(0, 0, true);
+	}
 	let offset = 0;
 	let most = 0;
 	for (const [off, n] of offsets) if (n > most) [offset, most] = [off, n];
@@ -851,8 +896,11 @@ function replayEnd() {
 	const hi = Math.max(...have);
 	const todo: number[] = [];
 	for (let rt = hi - 1; rt > lo && todo.length < RESCAN_MAX; rt--) if (!have.has(rt)) todo.push(rt);
-	if (!todo.length) return endAttempt('finish', a.runTime);
-	rescan = { todo, offset, total: p.totalticks, target: -1, seen: false, wait: 0, tries: 0, rows: [] };
+	if (!todo.length) {
+		endAttempt('finish', a.runTime);
+		return rescanNote(0, 0, true);
+	}
+	rescan = { todo, wanted: todo.length, offset, total: p.totalticks, target: -1, seen: false, wait: 0, tries: 0, rows: [] };
 }
 
 function rescanStep() {
@@ -915,8 +963,20 @@ function endRescan(atEnd: boolean) {
 	a.preRows = a.rows.findIndex((row) => tickOf(row) >= startTick);
 	if (a.preRows < 0) a.preRows = a.rows.length;
 	a.gaps = Math.max(0, a.gaps - s.rows.length);
-	a.events.push({ tick: lastTick, kind: 'rescan', rows: s.rows.length, wanted: s.rows.length + s.todo.length, atEnd });
+	a.events.push({ tick: lastTick, kind: 'rescan', rows: s.rows.length, wanted: s.wanted, atEnd });
 	endAttempt('finish', a.runTime);
+	rescanNote(s.rows.length, s.wanted, atEnd);
+}
+
+// On screen for LINE_SECONDS (the jump-1 line's label, shown whatever SHOW_LINE says): the replay is
+// saved and how many of its missed ticks the rescan filled
+function rescanNote(filled: number, wanted: number, atEnd: boolean) {
+	const sub = !wanted
+		? 'no missed ticks'
+		: filled === wanted
+			? `${filled} missed tick${filled === 1 ? '' : 's'} filled`
+			: `${filled} of ${wanted} missed ticks filled${atEnd ? '' : ' (unpaused, rescan stopped)'}`;
+	showLine('Strafe Review: replay saved', [], sub);
 }
 
 function loop() {

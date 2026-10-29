@@ -136,6 +136,40 @@ function parse(a) {
 		}
 		delete d.angleFit;
 	}
+	// Exact yaw from the game's wish velocity (wx, wy): it points along the view yaw the move used that tick,
+	// turned by the keys held (A: +90°, W+D: -45°...). The recorded yaw is a per-frame sample (own runs, up
+	// to ~2° off) or the replay camera's smoothed angle, so yaw speed spikes differed between a run and its
+	// replay by up to 12.5°/t; from the wish velocity they are equal on every tick (2131 of 2131). Ticks
+	// without keys keep the recorded yaw, moved by the offset to the exact yaw, which runs linearly from one
+	// exact tick to the next so the line has no steps. d.exactYaw marks the exact rows.
+	d.exactYaw = new Uint8Array(n);
+	if (d.hasWish) {
+		const corr = new Float64Array(n).fill(NaN);
+		for (let i = 0; i < n; i++) {
+			const b = d.buttons[i];
+			const f = (b & BIT.FORWARD ? 1 : 0) - (b & BIT.BACK ? 1 : 0);
+			const sd = (b & BIT.MOVERIGHT ? 1 : 0) - (b & BIT.MOVELEFT ? 1 : 0);
+			if ((!f && !sd) || Math.hypot(d.wx[i], d.wy[i]) < 1) continue;
+			const exact = ((Math.atan2(d.wy[i], d.wx[i]) - Math.atan2(-sd, f)) * 180) / Math.PI;
+			const c = wrap180(exact - d.yaw[i]);
+			if (Math.abs(c) <= EXACT_YAW_MAX) corr[i] = c; // further off: keys and wish don't belong together
+		}
+		let prev = -1;
+		for (let i = 0; i <= n; i++) {
+			if (i < n && !Number.isFinite(corr[i])) continue;
+			// rows prev+1 .. i-1 have no exact yaw: offset from corr[prev] to corr[i] (held at the ends)
+			for (let k = prev + 1; k < i; k++) {
+				const c = prev < 0 ? (i < n ? corr[i] : 0) : i >= n ? corr[prev] : corr[prev] + ((corr[i] - corr[prev]) * (k - prev)) / (i - prev);
+				d.yaw[k] = wrap180(d.yaw[k] + c);
+			}
+			if (i < n) {
+				d.yaw[i] = wrap180(d.yaw[i] + corr[i]);
+				d.exactYaw[i] = 1;
+			}
+			prev = i;
+		}
+		delete d.angleFit;
+	}
 	// keys line up with the moves in own runs and replays, not in coarse spectated rows
 	d.ownKeys = a.label !== 'spectate' && !d.coarse;
 	if (d.derived) {
@@ -172,7 +206,19 @@ function parse(a) {
 		// Ideal key follows the turn: yaw going up is a left turn (A), down is right (D)
 		d.ideal_key[i] = !d.ground[i] && Math.abs(d.yaws[i]) > 0.3 ? Math.sign(d.yaws[i]) : 0;
 	}
-	if (d.derived) for (let i = 0; i < n; i++) d.ratio[i] = d.opt[i] > 0 ? Math.abs(d.yaws[i]) / d.opt[i] : NaN;
+	// Rebuilt yawRatio: yaw change this tick / optimal, which is the game's own yawRatio (median 0.0004 off on
+	// an own run) when both rows have the exact yaw. Signed like the game's: negative when turning away from the
+	// side of the strafe key held the tick before (on a key switch the old key counts: 1929 of 1929 own ticks
+	// agree). Else the 5-tick average, unsigned, as the recorded yaw is too jumpy.
+	const sideOf = (i) => (d.buttons[i] & BIT.MOVELEFT ? 1 : 0) - (d.buttons[i] & BIT.MOVERIGHT ? 1 : 0);
+	if (d.derived) {
+		for (let i = 0; i < n; i++) {
+			const exact = i > 0 && d.exactYaw[i] && d.exactYaw[i - 1] && Number.isFinite(d.yawd[i]);
+			const side = (i > 0 && d.gap[i] === 0 && sideOf(i - 1)) || sideOf(i);
+			const r = exact ? (side ? side * d.yawd[i] : Math.abs(d.yawd[i])) : Math.abs(d.yaws[i]);
+			d.ratio[i] = d.opt[i] > 0 ? r / d.opt[i] : NaN;
+		}
+	}
 	return d;
 }
 
@@ -189,6 +235,7 @@ function parse(a) {
 // recording's angles can trail its velocity (parse() already moves a replay's angles back). Rows after missed
 // ticks are skipped.
 const SSJ_LAG_MAX = 10;
+const EXACT_YAW_MAX = 10; // degrees: a wish-velocity yaw further than this from the recorded one isn't used
 const GROUND_VZ = 1; // u/s: a steady vz under this is ground (see parse())
 const REPLAY_ANGLE_LAG = 0.06; // seconds a replay's view angles trail its velocity and keys (see parse())
 
