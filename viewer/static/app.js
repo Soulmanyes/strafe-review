@@ -59,6 +59,7 @@ const over = $('over');
 let list = [];
 let cur = null; // { head, d, jumps, j1, tps, endIdx }
 let view = { x0: 0, x1: 1 };
+const PRESTART_SECONDS = 2; // start zone the recorder keeps before the timer (its PRESTART_SECONDS)
 let hoverIdx = -1;
 let drag = null;
 let gutterText = []; // [text, y]: drawn after the lane clip is lifted
@@ -680,11 +681,12 @@ function showRunStats() {
 
 // ---------- view ----------
 
-// The whole attempt: the start zone rows the recorder keeps before the timer (a replay's missed ticks there
-// would make it longer), to the last row, or to the run end for a replay (it pauses there and keeps sending rows)
+// The whole attempt: the 2 s of start zone the recorder keeps before the timer (by time, so missed or
+// rescanned rows there don't move it), to the last row, or to the run end for a replay (it pauses there and
+// keeps sending rows)
 function fullRange() {
 	const d = cur.d;
-	const x0 = Math.max(d.x[0], -(cur.head.preRows || 0));
+	const x0 = Math.max(d.x[0], -Math.ceil(PRESTART_SECONDS / d.interval)); // the recorder keeps that many rows
 	const last = cur.head.label === 'replay' ? cur.endIdx : d.n - 1;
 	return { x0: x0 - 5, x1: d.x[last] + 5 };
 }
@@ -870,11 +872,20 @@ function line(g, d, i0, i1, val, Y, color, width, ok = () => true) {
 }
 
 // q-th fraction of the finite values, so one teleport or slow tick doesn't squash the lane
+// Quantile per tick, not per row: a row after missed ticks also stands for them (and a row left without
+// a value by the missed ticks hands its share on), so a recording that missed a few ticks scales its
+// lanes like one that didn't (an own run and its replay).
 function quantile(d, i0, i1, val, q) {
 	const vs = [];
+	let owed = 0;
 	for (let i = i0; i <= i1; i++) {
+		if (i > i0) owed += d.gap[i];
 		const v = val(i);
-		if (Number.isFinite(v)) vs.push(v);
+		if (Number.isFinite(v)) {
+			for (let k = 0; k <= owed; k++) vs.push(v);
+			owed = 0;
+		} else if (d.gap[i] > 0) owed++;
+		else owed = 0;
 	}
 	if (!vs.length) return NaN;
 	vs.sort((a, b) => a - b);
