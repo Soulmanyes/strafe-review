@@ -3,7 +3,8 @@
 // (viewer/check_stats.js). Uses data.js and checks.js; no DOM here.
 //
 // Definitions match the rest of the viewer, so the same jump shows the same number everywhere:
-//  - gain %: sum(gain) / sum(ideal) over a jump's rows, as findJumps() and the jump strip.
+//  - gain %: sum(gain) / sum(ideal) over a jump's rows, as findJumps() and the jump strip. The run's gain %
+//    pools strafing rows only: a wall hit leaves a slow fall whose ideal (8-12 u/s a tick) would swamp it.
 //  - CS:S gain (ssj): findJumps()' SSJ-style score, summed over jumps 1+ the way SSJ averages ticks.
 //  - angle: median yawRatio of strafe middles (2 ticks skipped at each end, +left/+right ticks out), as the drill page.
 //  - strafes: strafesOf(). Rows judged: strafing() (air, 100+ u/s, no collision).
@@ -182,13 +183,7 @@ function summarize(head, d, jumps) {
 	let ssjN = 0;
 	const perJump = run.map((j) => {
 		const [s, e] = jumpRange(j, endIdx);
-		let jg = 0;
-		let jid = 0;
 		for (let i = s; i < e; i++) {
-			if (Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) {
-				jg += d.gain[i];
-				jid += d.ideal[i];
-			}
 			if (strafing(d, i)) {
 				air++;
 				if (d.ideal_key[i]) turning++;
@@ -196,6 +191,8 @@ function summarize(head, d, jumps) {
 				if (turnBtn(d, i)) btnTicks++;
 				else if (d.ideal_key[i] && !keyDir(d.buttons[i])) noKey++;
 				if (Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) {
+					g += d.gain[i];
+					id += d.ideal[i];
 					lost += d.ideal[i] - d.gain[i];
 					if (d.ideal_key[i]) {
 						side[d.ideal_key[i]].g += d.gain[i];
@@ -204,8 +201,6 @@ function summarize(head, d, jumps) {
 				}
 			}
 		}
-		g += jg;
-		id += jid;
 		const sts = strafesOf(d, j, endIdx);
 		for (const st of sts) {
 			for (const i of interior(d, st, 2)) {
