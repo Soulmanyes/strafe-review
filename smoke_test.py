@@ -103,13 +103,19 @@ def post(path, body=None):
 
 
 def fake_github(zip_path):
-    """A local stand-in for GitHub's releases/latest and the release asset; returns its port."""
+    """A local stand-in for the monorepo's release list and the release asset; returns its port.
+    The list also holds another tool's higher release and a pre-release, which must be skipped."""
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             port = self.server.server_address[1]
             if self.path == "/latest":
-                body = json.dumps({"tag_name": "v99.0.0", "html_url": "", "assets": [
-                    {"name": "strafe-review-windows.zip", "browser_download_url": f"http://127.0.0.1:{port}/asset"}]}).encode()
+                asset = [{"name": "strafe-review-windows.zip", "browser_download_url": f"http://127.0.0.1:{port}/asset"}]
+                body = json.dumps([
+                    {"tag_name": "gain-converter-v999.0.0", "html_url": "", "assets": []},
+                    {"tag_name": "strafe-review-v100.0.0", "html_url": "", "prerelease": True, "assets": asset},
+                    {"tag_name": "strafe-review-v99.0.0", "html_url": "", "assets": asset},
+                    {"tag_name": "v98.0.0", "html_url": "", "assets": asset},
+                ]).encode()
             else:
                 body = zip_path.read_bytes()
             self.send_response(200)
@@ -260,7 +266,7 @@ def main():
         wait_serving()
         post("/api/update/check")
         info = json.loads(get("/api/update")[1])
-        if not (info.get("latest") and info["latest"]["tag"] == "v99.0.0" and info.get("canInstall")):
+        if not (info.get("latest") and info["latest"]["tag"] == "strafe-review-v99.0.0" and info.get("canInstall")):
             fail(f"/api/update after the check: {info}")
         code, body = post("/api/update/install")
         if code != 200:
@@ -268,7 +274,7 @@ def main():
         time.sleep(3)
         wait_serving()
         state = json.loads((tmp / "data" / "strafe-review" / "updates.json").read_text())
-        if state.get("failed") != "v99.0.0" or copy.stat().st_mtime_ns == before:
+        if state.get("failed") != "strafe-review-v99.0.0" or copy.stat().st_mtime_ns == before:
             fail(f"after the update: exe swapped {copy.stat().st_mtime_ns != before}, state {state}")
         end = time.time() + 30
         while (app / (exe.name + ".old")).exists() and time.time() < end:

@@ -21,25 +21,39 @@ from pathlib import Path
 
 import steam
 
-VERSION = "1.4.0"  # bump in the same commit as the release tag
-REPO = "Soulmanyes/strafe-review"
+VERSION = "1.4.1"  # bump in the same commit as the release tag
+# Strafe Review lives in the Movement Kit monorepo since 1.5.0, next to other tools' releases
+REPO = "Soulmanyes/movement-kit"
+TAG_PREFIX = "strafe-review-v"
 ASSET = "strafe-review-windows.zip"
 EXE = "strafe-review.exe"
 CHECK_EVERY = 6 * 3600  # seconds between automatic checks
 TIMEOUT = 10
-# Tests point this at a local server; it answers like GitHub's releases/latest
-API = os.environ.get("STRAFE_REVIEW_UPDATE_API", f"https://api.github.com/repos/{REPO}/releases/latest")
+# Tests point this at a local server; it answers like GitHub's release list
+API = os.environ.get("STRAFE_REVIEW_UPDATE_API", f"https://api.github.com/repos/{REPO}/releases?per_page=100")
 STATE_FILE = steam.data_dir() / "updates.json"
 
 
 def parse_version(text):
-    """"v1.4.0" or "1.4" -> (1, 4, 0); None if it isn't a plain version number."""
-    parts = (text or "").strip().lstrip("vV").split(".")
-    try:
-        nums = [int(p) for p in parts]
-    except ValueError:
+    """"v1.4.0", "1.4" or "strafe-review-v1.5.0" -> (1, 4, 0); None if it isn't a version number."""
+    m = re.fullmatch(r"(?:[a-z-]+-)?[vV]?(\d+(?:\.\d+)*)", (text or "").strip())
+    if not m:
         return None
+    nums = [int(p) for p in m.group(1).split(".")]
     return tuple(nums + [0] * (3 - len(nums)))
+
+
+def pick(releases):
+    """The highest strafe-review-v* release in the monorepo's list, leaving out drafts and
+    pre-releases (the list holds every tool's releases). Raises ValueError if there is none."""
+    if not isinstance(releases, list):
+        raise ValueError("GitHub's answer isn't a release list")  # noqa: TRY004 (callers catch ValueError)
+    mine = [r for r in releases if isinstance(r, dict)
+            and isinstance(r.get("tag_name"), str) and r["tag_name"].startswith(TAG_PREFIX)
+            and not r.get("draft") and not r.get("prerelease") and parse_version(r["tag_name"])]
+    if not mine:
+        raise ValueError(f"No {TAG_PREFIX}* release on GitHub yet")
+    return max(mine, key=lambda r: parse_version(r["tag_name"]))
 
 
 def frozen_exe():
@@ -132,12 +146,14 @@ class Updater:
         GitHub only when forced or CHECK_EVERY after the last check. Raises OSError/ValueError when
         GitHub can't be reached (the error is kept for the page too)."""
         latest = self.state.get("latest")
-        if force or not latest or time.time() - self.state.get("checked", 0) > CHECK_EVERY:
+        # an answer from the old repo (a tag without the prefix) is stale: ask the monorepo now
+        stale = not latest or not str(latest.get("tag", "")).startswith(TAG_PREFIX)
+        if force or stale or time.time() - self.state.get("checked", 0) > CHECK_EVERY:
             req = urllib.request.Request(API, headers={"Accept": "application/vnd.github+json",
                                                        "User-Agent": "strafe-review"})
             try:
                 with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                    data = json.load(r)
+                    data = pick(json.load(r))
                 asset = next((a["browser_download_url"] for a in data.get("assets", []) if a.get("name") == ASSET), None)
                 latest = {"tag": data["tag_name"], "url": data.get("html_url", ""), "asset": asset}
             except (OSError, ValueError, KeyError, TypeError) as e:

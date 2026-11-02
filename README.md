@@ -1,5 +1,7 @@
 # Strafe Review
 
+> **Moved.** Strafe Review now lives in [Soulmanyes's Movement Kit](https://github.com/Soulmanyes/movement-kit/tree/main/strafe-review), with the other movement tools. This repo is archived. The Windows exe updates to it on its own (1.4.1 and later). A Linux clone of this repo doesn't: clone the Movement Kit and run `strafe-review/install.py` from there.
+
 Per-tick strafe recording and review for [Momentum Mod](https://momentum-mod.org/). A small HUD script records every attempt, and a page in your browser shows each jump as a graph, lists the mistakes it finds, and compares your strafing with optimal movement and with replays.
 
 ![The main page: one finished run with its jumps, yaw speed, angle, gain, keys and speed](docs/screenshot.png)
