@@ -10,7 +10,7 @@ The review page has three parts:
 - `/drill`: jump 1 of every attempt, stacked and side by side, updated live, with each strafe's mouse movement in cm next to the optimal (type your mouse DPI in once).
 - `/compare`: 2 to 4 recordings on one graph, with every run stat side by side (best per row marked), per jump numbers, mistakes and paths. The picker has the same search and sort. Quick picks: your fastest finish, your best jump 1, top replay.
 
-In game, the recorder can show a 3-row line after jump 1 lands: landing speed, gain % per strafe and the biggest mistake (off by default, see below).
+In game, the recorder can show a line after jump 1 lands: landing speed, gain % per strafe, what lost each strafe the most gain (wrong or no key, turning too slow, or too fast, with a tick count) and the biggest mistake (off by default, see below).
 
 Replays played to the end count as finishes (see [Replays](#replays)). Bonus tracks are recorded and listed per bonus ("surf_artois: b1"), and 66-tick bhop works next to 66-tick surf.
 
@@ -67,7 +67,7 @@ Attempts are kept in `~/.local/share/strafe-review/attempts`.
 
 ## Updates and settings
 
-- The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. It never updates while a game is being played. A copy running from this repo only reports new versions: `git pull` brings them, then `python install.py` again when the recorder changed (it did in 1.1.0) and `panorama_reload` in the game console. The exe installs the recorder by itself at every start.
+- The page checks GitHub for a new release every few hours and shows a banner when there is one. The Windows exe installs it with **Update** and starts again; tick **Install updates automatically** (bottom left of the main page) to skip the button. It never updates while a game is being played. A copy running from this repo only reports new versions: `git pull` brings them, then `python install.py` again when the recorder changed (it did in 1.2.0) and `panorama_reload` in the game console. The exe installs the recorder by itself at every start.
 - **Show the jump-1 line in game** (bottom left of the main page) turns on the in-game line after jump 1. It is off by default so it doesn't land on top of anyone's own HUD. Type `panorama_reload` in the game console after changing it.
 
 ## Building the exe
