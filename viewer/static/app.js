@@ -72,6 +72,7 @@ const SETTINGS_KEY = 'strafe-review-checks';
 const DRILLS_KEY = 'strafe-review-show-drills';
 const FILTERS_KEY = 'strafe-review-filters'; // { map, tick, style, result, tag }: "" = all
 const SORT_KEY = 'strafe-review-sort';
+const WHO_KEY = 'strafe-review-who'; // '' = all, else a label: own, replay, spectate
 // Momentum's Style enum (common/web/enums/style.enum.ts); half-sideways is two values, bhop and surf
 const STYLES = ['Normal', 'Half-Sideways (bhop)', 'Half-Sideways (surf)', 'Sideways', 'W-Only', 'A/D-Only', 'S-Only', 'Backwards', 'Pro', 'Teleport'];
 const RESULTS = { finish: 'Finished', other: 'Not finished' };
@@ -149,32 +150,35 @@ function fillFilters() {
 	}
 }
 
-// skip: a select id whose choice is ignored, to ask what its other choices would list
+// skip: a select id (or 'who') whose choice is ignored, to ask what its other choices would list
 function passesFilters(a, skip) {
 	for (const [, id, get] of FILTERS) {
 		const want = id !== skip && $(id).value;
 		if (want && ![get(a)].flat().includes(want)) return false;
 	}
+	if (skip !== 'who' && !matchesWho(a, who.get())) return false;
 	return matchesSearch(a, $('f-search').value);
 }
 
-// A choice is greyed out when picking it would list nothing or the same attempts as All, given the
-// other filters, the search and "Show drills". A select with no other choice left is greyed out
-// whole, unless going back to All would change the list.
+// Only what can't be picked is greyed out (owner 2026-11-02; before, choices that listed the same
+// attempts as All were greyed out too, which locked choices out by coincidence). A choice is greyed
+// out when, given the other filters, the search and "Show drills", it would list nothing. A select is
+// greyed out whole only when it is on All and every choice would list nothing. Same for the Who row.
 function syncFilters() {
 	for (const [, id, get] of FILTERS) {
 		const pool = list.filter((a) => listable(a) && passesFilters(a, id));
 		const sel = $(id);
-		let useful = false;
+		let any = false;
 		for (const o of sel.options) {
 			if (!o.value) continue;
 			const n = pool.filter((a) => [get(a)].flat().includes(o.value)).length;
-			const changes = n > 0 && n < pool.length;
-			o.disabled = !changes && o.value !== sel.value;
-			if (changes || (o.value === sel.value && n !== pool.length)) useful = true;
+			o.disabled = !n && o.value !== sel.value;
+			if (n) any = true;
 		}
-		sel.disabled = !useful;
+		sel.disabled = !any && !sel.value;
 	}
+	const pool = list.filter((a) => listable(a) && passesFilters(a, 'who'));
+	who.sync((w) => pool.filter((a) => matchesWho(a, w)).length);
 }
 
 function filtersChanged() {
@@ -194,26 +198,17 @@ function shown(a) {
 	return listable(a) && passesFilters(a);
 }
 
-// Finish times only compare on one map: with Map on All, "Fastest finish" is greyed out. A sort that
-// orders the listed attempts the same as one above it in the menu is greyed out too (Fastest finish
-// with Tag on PB is Newest first). A greyed out saved choice falls back to Newest first and comes
-// back once it orders differently again.
-function syncSort(visible) {
+// Finish times only compare on one map: with Map on All, "Fastest finish" is greyed out. Other sorts
+// are never greyed out, even when they happen to order the list the same as another (owner 2026-11-02).
+// A greyed out saved choice falls back to Newest first and comes back once a map is picked.
+function syncSort() {
 	const sel = $('f-sort');
 	const one = !!$('f-map').value;
-	const orders = [];
 	for (const o of sel.options) {
 		const [, label] = LIST_SORTS.find((s) => s[0] === o.value);
-		const order = sortHeads(visible, o.value).map((a) => `${a.dir}/${a.id}`).join('|');
-		const same = orders.find((x) => x.order === order);
-		orders.push({ order, label });
-		if (o.value === 'finish' && !one) {
-			o.disabled = true;
-			o.textContent = `${label} (pick a map)`;
-		} else {
-			o.disabled = !!same;
-			o.textContent = same ? `${label} (same as ${same.label})` : label;
-		}
+		const off = o.value === 'finish' && !one;
+		o.disabled = off;
+		o.textContent = off ? `${label} (pick a map)` : label;
 	}
 	const want = localStorage.getItem(SORT_KEY) || 'newest';
 	const opt = [...sel.options].find((o) => o.value === want);
@@ -250,9 +245,9 @@ function renderList() {
 	const hits = list.filter(shown).length;
 	const drills = $('show-drills').checked ? 0 : list.filter((a) => isDrill(a) && !isFragment(a) && passesFilters(a)).length;
 	$('f-count').textContent = `${hits} of ${total} shown${drills ? `, ${drills} more in drills` : ''}`;
-	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim();
+	$('f-clear').hidden = !FILTERS.some(([, id]) => $(id).value) && !$('f-search').value.trim() && !who.get();
 	const maps = [...new Set(visible.map(course))]; // newest attempt's course first, whatever the sort
-	const sorted = sortHeads(visible, syncSort(visible));
+	const sorted = sortHeads(visible, syncSort());
 	for (const m of maps) {
 		const title = document.createElement('div');
 		title.className = 'map-name';
@@ -1533,6 +1528,7 @@ $('yaw-signed').onchange = () => {
 	LANES.find((l) => l.id === 'yaw').sub = YAW_SUB[$('yaw-signed').checked ? 'signed' : 'size'];
 	draw();
 };
+const who = initWho($('who'), WHO_KEY, renderList);
 $('show-drills').checked = localStorage.getItem(DRILLS_KEY) === '1';
 $('show-drills').onchange = () => {
 	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');
@@ -1544,6 +1540,7 @@ initSort($('f-sort'), SORT_KEY, renderList);
 $('f-clear').onclick = () => {
 	for (const [, id] of FILTERS) $(id).value = '';
 	$('f-search').value = '';
+	who.set('');
 	filtersChanged();
 };
 $('tag-add').onkeydown = (e) => {

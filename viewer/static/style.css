@@ -65,6 +65,14 @@ h1 { font-size: 17px; margin: 0; }
 	white-space: nowrap;
 }
 .drill-link:hover { background: var(--card-hi); }
+/* Whose recordings: All / Own / Replays / Spectated (listsort.js initWho) */
+.who-row { display: flex; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.who-row button { flex: 1; padding: 4px 4px; font-size: 12px; border-radius: 0; margin-left: -1px; }
+.who-row button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.who-row button:last-child { border-radius: 0 6px 6px 0; }
+.who-row button.on { background: var(--accent); border-color: var(--accent); color: #10131a; font-weight: 600; position: relative; }
+.who-row button:disabled { opacity: 0.4; cursor: default; }
+.who-row button:disabled:hover { background: var(--card); border-color: var(--border); }
 .drill-toggle {
 	display: flex;
 	align-items: center;

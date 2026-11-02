@@ -10,6 +10,7 @@ const SETTINGS_KEY = 'strafe-review-checks'; // the main page's check settings
 const ALIGN_KEY = 'strafe-review-align';
 const DRILLS_KEY = 'strafe-review-compare-drills';
 const SORT_KEY = 'strafe-review-compare-sort';
+const WHO_KEY = 'strafe-review-compare-who'; // '' = all, else a label: own, replay, spectate
 const DRILL_MAX_JUMPS = 7;
 const REASONS = {
 	finish: 'Finished',
@@ -129,7 +130,10 @@ function mapList() {
 	const mk = $('map').value;
 	const showDrills = $('show-drills').checked;
 	const q = $('search').value;
-	const hs = list.filter((h) => mapKey(h) === mk && !isFragment(h) && (picks.includes(h.id) || ((showDrills || !isDrill(h)) && matchesSearch(h, q))));
+	// picked recordings stay listed whatever the search and Who say
+	const base = list.filter((h) => mapKey(h) === mk && !isFragment(h) && (showDrills || !isDrill(h)) && matchesSearch(h, q));
+	who.sync((w) => base.filter((h) => matchesWho(h, w)).length);
+	const hs = list.filter((h) => mapKey(h) === mk && !isFragment(h) && (picks.includes(h.id) || (base.includes(h) && matchesWho(h, who.get()))));
 	return sortHeads(hs, $('sort').value);
 }
 
@@ -178,7 +182,7 @@ function showPicker() {
 	const box = $('pick-list');
 	box.replaceChildren();
 	const hs = mapList();
-	if (!hs.length) box.textContent = $('search').value.trim() ? 'No recording on this map matches the search.' : 'No recordings on this map.';
+	if (!hs.length) box.textContent = $('search').value.trim() || who.get() ? 'No recording on this map matches the search and Who.' : 'No recordings on this map.';
 	for (const h of hs) {
 		const at = picks.indexOf(h.id);
 		const row = document.createElement('div');
@@ -1257,6 +1261,7 @@ $('show-drills').onchange = () => {
 	localStorage.setItem(DRILLS_KEY, $('show-drills').checked ? '1' : '0');
 	showPicker();
 };
+const who = initWho($('who'), WHO_KEY, showPicker);
 $('search').oninput = showPicker;
 initSort($('sort'), SORT_KEY, showPicker);
 new ResizeObserver(() => draw()).observe($('plot'));

@@ -8,6 +8,8 @@
 #picker .sec-head .sort select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: 13px system-ui, sans-serif; }
 #picker .sec-head #search:focus,
 #picker .sec-head .sort select:hover { outline: none; border-color: var(--accent); }
+#picker .sec-head .who-row { padding: 0; border: 0; }
+#picker .sec-head .who-row button { flex: none; padding: 4px 10px; }
 #picker .sec-head .sort { display: flex; gap: 6px; align-items: center; color: var(--muted); }
 #picker .sec-head .drill-toggle { display: flex; gap: 6px; align-items: center; color: var(--muted); }
 #pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }

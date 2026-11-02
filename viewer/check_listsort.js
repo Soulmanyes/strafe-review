@@ -7,7 +7,7 @@
 
 Object.assign(globalThis, require('./static/data.js'));
 const { autoTags } = require('./static/autotags.js');
-const { LIST_SORTS, sortHeads, matchesSearch } = require('./static/listsort.js');
+const { LIST_SORTS, sortHeads, matchesSearch, WHO, matchesWho } = require('./static/listsort.js');
 
 const args = process.argv.slice(2);
 const at = args.indexOf('--url');
@@ -44,6 +44,12 @@ same('note, words ANDed', hits('jump again'), 'b');
 same('words ANDed, one missing', hits('jump zed'), '');
 same('player', hits('zed'), 'c');
 same('label', hits('replay'), 'cd');
+const who = (w) => [...hs, { id: 'f', label: 'spectate', player: 'Bo', started: 6 }].filter((h) => matchesWho(h, w)).map((h) => h.id).join('');
+same('who all', who(''), 'abcdef');
+same('who own', who('own'), 'abe');
+same('who replays', who('replay'), 'cd');
+same('who spectated', who('spectate'), 'f');
+same('who choices', WHO.map((w) => w[0]), ['', 'own', 'replay', 'spectate']);
 
 (async () => {
 	let list;

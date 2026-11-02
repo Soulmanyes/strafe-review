@@ -50,4 +50,46 @@ function initSort(sel, storeKey, onChange) {
 	};
 }
 
-if (typeof module !== 'undefined') module.exports = { LIST_SORTS, sortHeads, matchesSearch };
+// Whose recording: the label the recorder (or the server, for old files) gave it. '' = all.
+const WHO = [
+	['', 'All'],
+	['own', 'Own'],
+	['replay', 'Replays'],
+	['spectate', 'Spectated']
+];
+
+function matchesWho(h, who) {
+	return !who || h.label === who;
+}
+
+// Fills box with one button per WHO choice and keeps the choice in localStorage under storeKey.
+// Returns { get, set, sync }: sync(count) greys out a choice for which count(who) is 0, except the one on.
+function initWho(box, storeKey, onChange) {
+	let cur = localStorage.getItem(storeKey) || '';
+	if (!WHO.some((w) => w[0] === cur)) cur = '';
+	const btns = WHO.map(([k, label]) => {
+		const b = document.createElement('button');
+		b.type = 'button';
+		b.textContent = label;
+		b.onclick = () => set(k, true);
+		return b;
+	});
+	box.replaceChildren(...btns);
+	const paint = () => btns.forEach((b, i) => b.classList.toggle('on', WHO[i][0] === cur));
+	function set(k, user) {
+		cur = k;
+		localStorage.setItem(storeKey, k);
+		paint();
+		if (user) onChange();
+	}
+	paint();
+	return {
+		get: () => cur,
+		set,
+		sync(count) {
+			btns.forEach((b, i) => (b.disabled = WHO[i][0] !== cur && WHO[i][0] !== '' && count(WHO[i][0]) === 0));
+		}
+	};
+}
+
+if (typeof module !== 'undefined') module.exports = { LIST_SORTS, sortHeads, matchesSearch, WHO, matchesWho };
