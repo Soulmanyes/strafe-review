@@ -92,6 +92,33 @@ function strafesOf(d, j, endIdx) {
 	return out;
 }
 
+// Loss causes per strafe: a tick gaining under CAUSE_LOSS of ideal is a lost tick, put down to keys (no key,
+// or the other one, held while turning), slow (angle under CAUSE_LO of optimal, or turning the wrong way) or
+// fast (over CAUSE_HI). +left/+right ticks count by their angle like mouse turning. Lost ticks inside the
+// band, or with no angle known, are left out.
+const CAUSE_LOSS = 0.75;
+const CAUSE_LO = 0.85;
+const CAUSE_HI = 1.15;
+const CAUSES = ['keys', 'slow', 'fast'];
+
+// The cause that lost strafe st the most u/s: { cause, ticks, lost }, or null when no lost tick has one.
+// The recorder's in-game line has a port of this (strafePcts in strafe-review.ts).
+function strafeCause(d, st) {
+	const by = { keys: { lost: 0, ticks: 0 }, slow: { lost: 0, ticks: 0 }, fast: { lost: 0, ticks: 0 } };
+	for (let i = st.i0; i <= st.i1; i++) {
+		if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
+		if (!(d.gain[i] < CAUSE_LOSS * d.ideal[i])) continue;
+		const r = d.ratio[i];
+		const cause = keyDir(d.buttons[i]) !== st.dir ? 'keys' : !Number.isFinite(r) ? null : r < CAUSE_LO ? 'slow' : r > CAUSE_HI ? 'fast' : null;
+		if (!cause) continue;
+		by[cause].lost += d.ideal[i] - d.gain[i];
+		by[cause].ticks++;
+	}
+	let top = null;
+	for (const c of CAUSES) if (by[c].lost > (top ? top.lost : 0)) top = { cause: c, ticks: by[c].ticks, lost: by[c].lost };
+	return top;
+}
+
 // Key switches in one jump: ticks where the held key turns to the other side
 function switchesOf(d, j, endIdx) {
 	const [s, e] = jumpRange(j, endIdx);
@@ -293,4 +320,4 @@ function runChecks(d, jumps, endIdx, settings, baseline, replay = false) {
 	return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { CHECKS, TIMED, atRate, REPLAY_SKIP, MIN_TAKEOFF, SWITCH_WINDOW, runChecks, strafesOf, switchesOf, turnStart, keyDir, median, strafing, turnBtn, interior, jumpRange };
+if (typeof module !== 'undefined') module.exports = { CHECKS, TIMED, atRate, REPLAY_SKIP, MIN_TAKEOFF, SWITCH_WINDOW, runChecks, strafesOf, strafeCause, CAUSE_LOSS, CAUSE_LO, CAUSE_HI, switchesOf, turnStart, keyDir, median, strafing, turnBtn, interior, jumpRange };

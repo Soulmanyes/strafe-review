@@ -19,7 +19,7 @@ const { stripTypeScriptTypes } = require('module');
 
 const data = require('./static/data.js');
 Object.assign(globalThis, data);
-const { runChecks, strafesOf, strafing } = require('./static/checks.js');
+const { runChecks, strafesOf, strafeCause, strafing } = require('./static/checks.js');
 
 const args = process.argv.slice(2);
 const at = args.indexOf('--store');
@@ -45,7 +45,12 @@ function viewer(a) {
 	const endIdx = a.postRows ? d.n - 1 - a.postRows : d.n - 1;
 	const j = jumps.find((x) => x.num === 1);
 	if (!j || j.e > endIdx || j.e >= d.n) return null;
-	const strafes = strafesOf(d, j, endIdx).map((st) => {
+	const sts = strafesOf(d, j, endIdx);
+	const causes = sts.map((st) => {
+		const c = strafeCause(d, st);
+		return c ? [c.cause, c.ticks] : null;
+	});
+	const strafes = sts.map((st) => {
 		let g = 0;
 		let id = 0;
 		for (let i = st.i0; i <= st.i1; i++) {
@@ -60,7 +65,7 @@ function viewer(a) {
 	const mistakes = runChecks(d, jumps, endIdx, off, null, false)
 		.filter((m) => m.jump === 1)
 		.map((m) => [m.check, m.i0, +m.lost.toFixed(3)]);
-	return { s: j.s, e: j.e, land: +j.land.toFixed(3), pct: +j.pct.toFixed(3), strafes, mistakes };
+	return { s: j.s, e: j.e, land: +j.land.toFixed(3), pct: +j.pct.toFixed(3), strafes, causes, mistakes };
 }
 
 // The recorder file run with stub Panorama APIs; returns its workOutLine
@@ -110,7 +115,8 @@ const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
 
 function diff(id, got, want) {
 	const bad = [];
-	for (const k of ['s', 'e', 'land', 'pct', 'strafes', 'mistakes']) if (!same(got[k], want[k])) bad.push(`${k}: game ${JSON.stringify(got[k])} viewer ${JSON.stringify(want[k])}`);
+	// causes: lines logged before the recorder had them don't carry the field
+	for (const k of ['s', 'e', 'land', 'pct', 'strafes', 'causes', 'mistakes']) if ((k !== 'causes' || k in got) && !same(got[k], want[k])) bad.push(`${k}: game ${JSON.stringify(got[k])} viewer ${JSON.stringify(want[k])}`);
 	const top = want.mistakes[0];
 	console.log(
 		`${bad.length ? 'DIFF' : 'ok  '} ${id} land ${want.land.toFixed(1)} gain ${want.pct.toFixed(2)} % strafes ${want.strafes.length} top ${top ? `${top[0]} -${top[2].toFixed(1)}` : '-'}`

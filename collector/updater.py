@@ -9,6 +9,7 @@ the repo (Linux, or Python on Windows) only reports updates: git pull brings the
 """
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -47,20 +48,38 @@ def frozen_exe():
     return Path(sys.executable) if getattr(sys, "frozen", False) else None
 
 
+def checkout_version():
+    """VERSION as this file on disk has it now. A copy running from the repo keeps the VERSION it
+    started with, so after a git pull (or the owner's own release commit) it would report its own
+    checkout as an update. None for the exe or when the file can't be read."""
+    if frozen_exe():
+        return None
+    try:
+        m = re.search(r'^VERSION = "([^"]+)"', Path(__file__).read_text(), re.MULTILINE)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 class Updater:
-    def __init__(self, state_file=STATE_FILE, version=VERSION):
-        self.version = version
+    def __init__(self, state_file=STATE_FILE, version=None):
+        self._version = version
         self.state_file = Path(state_file)
         self.state = self._load()
         # an update that was installed but isn't what runs now didn't take: don't retry it on its own
         tag = self.state.get("installed")
-        if tag and parse_version(tag) != parse_version(version):
+        if tag and parse_version(tag) != parse_version(self.version):
             self.state.update(failed=tag)
             self.state.pop("installed", None)
             self._save()
         elif tag:
             self.state.pop("installed", None)
             self._save()
+
+    @property
+    def version(self):
+        """The version given, else the checkout's on disk (repo copy), else the one this process loaded."""
+        return self._version or checkout_version() or VERSION
 
     def _load(self):
         try:

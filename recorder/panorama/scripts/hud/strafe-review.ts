@@ -363,16 +363,17 @@ function onTargetChange(why: string) {
 
 // ---------------------------------------------------------------------------------------------
 // In-game jump-1 line: shortly after jump 1 lands, a label on the HUD shows landing speed, gain %,
-// gain % per strafe and the biggest jump-1 mistake. Own attempts only (tick stats read 0 while
-// spectating). The numbers are a port of the viewer's data.js parse/findJumps, drill.js strafeStats
-// and checks.js runChecks (jump-1 checks, default thresholds); viewer/check_line.js diffs the two.
+// gain % per strafe, what lost each strafe most of its gain, and the biggest jump-1 mistake. Own attempts
+// only (tick stats read 0 while spectating). The numbers are a port of the viewer's data.js parse/findJumps,
+// drill.js strafeStats, checks.js strafeCause and runChecks (jump-1 checks, default thresholds);
+// viewer/check_line.js diffs the two.
 // Each line also goes to yaw.log as "SRLINE <id> <json>", which the collector ignores.
 
 const LINE_TAG = 'SRLINE';
 // Off by default, so it never lands on top of someone's own HUD. install.py rewrites this line from the
 // viewer's "Show the jump-1 line in game" switch; the SRLINE log line is written either way.
 const SHOW_LINE = false;
-const SHOW = { landing: true, gain: true, strafes: true, mistake: true };
+const SHOW = { landing: true, gain: true, strafes: true, cause: true, mistake: true };
 const LINE_SECONDS = 4;
 // The 5-tick turn average reads 2 rows ahead, so the strafes are split a few rows past the landing
 const LINE_DELAY_ROWS = 3;
@@ -653,18 +654,42 @@ function runsOf(d: Rows, from: number, to: number, bad: (i: number) => boolean, 
 	return out;
 }
 
-// drill.js strafeStats(): gain % per strafe over the rows the checks judge
+// Loss causes per strafe, a port of checks.js strafeCause(): a tick gaining under CAUSE_LOSS of ideal is a
+// lost tick, put down to keys (no key, or the other one, held while turning), slow (angle under CAUSE_LO of
+// optimal, or turning the wrong way) or fast (over CAUSE_HI). +left/+right ticks count by their angle like
+// mouse turning. Lost ticks inside the band, or with no angle known, are left out.
+const CAUSE_LOSS = 0.75;
+const CAUSE_LO = 0.85;
+const CAUSE_HI = 1.15;
+type Cause = 'keys' | 'slow' | 'fast';
+
+// drill.js strafeStats(): gain % per strafe over the rows the checks judge, plus the cause that lost the
+// strafe the most u/s and its tick count (null: no lost ticks with a cause)
 function strafePcts(d: Rows, sts: Strafe[]) {
 	return sts.map((st) => {
 		let g = 0;
 		let id = 0;
+		const by: Record<Cause, { lost: number; ticks: number }> = { keys: { lost: 0, ticks: 0 }, slow: { lost: 0, ticks: 0 }, fast: { lost: 0, ticks: 0 } };
 		for (let i = st.i0; i <= st.i1; i++) {
-			if (strafing(d, i) && Number.isFinite(d.gain[i]) && Number.isFinite(d.ideal[i])) {
-				g += d.gain[i];
-				id += d.ideal[i];
-			}
+			if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
+			g += d.gain[i];
+			id += d.ideal[i];
+			if (!(d.gain[i] < CAUSE_LOSS * d.ideal[i])) continue;
+			const r = d.ratio[i];
+			const cause: Cause | null =
+				keyDir(d.buttons[i]) !== st.dir ? 'keys' : !Number.isFinite(r) ? null : r < CAUSE_LO ? 'slow' : r > CAUSE_HI ? 'fast' : null;
+			if (!cause) continue;
+			by[cause].lost += d.ideal[i] - d.gain[i];
+			by[cause].ticks++;
 		}
-		return { dir: st.dir, pct: id > 0 ? (100 * g) / id : NaN };
+		let top: { cause: Cause; ticks: number } | null = null;
+		let most = 0;
+		for (const c of ['keys', 'slow', 'fast'] as Cause[])
+			if (by[c].lost > most) {
+				most = by[c].lost;
+				top = { cause: c, ticks: by[c].ticks };
+			}
+		return { dir: st.dir, pct: id > 0 ? (100 * g) / id : NaN, top };
 	});
 }
 
@@ -752,8 +777,9 @@ function gainColor(p: number) {
 	return `rgb(${mix(0xff, 0x7b)},${mix(0x5c, 0xd8)},${mix(0x5c, 0x8f)})`;
 }
 
-// Up to 3 rows under the screen centre: head (landing, gain), one coloured box per strafe, mistake
-function showLine(head: string, strafes: { dir: number; pct: number }[], mistake: string) {
+// Up to 4 rows at the top of the screen: head (landing, gain), one coloured gain box per strafe, the
+// strafe's top loss cause under each, mistake
+function showLine(head: string, strafes: { dir: number; pct: number; top: { cause: string; ticks: number } | null }[], cause: boolean, mistake: string) {
 	if (!linePanel || !linePanel.IsValid()) {
 		const ctx = $.GetContextPanel();
 		const root = ctx.GetParent() ?? ctx;
@@ -771,15 +797,26 @@ function showLine(head: string, strafes: { dir: number; pct: number }[], mistake
 			style: `horizontal-align: center; font-size: ${size}px; font-weight: bold; color: #ffffff; ${SHADOW}`
 		});
 	if (head) text(panel, head, 22);
-	if (strafes.length) {
-		const row = $.CreatePanel('Panel', panel, '', { style: 'horizontal-align: center; flow-children: right; margin: 4px 0px;' });
-		for (const st of strafes) {
+	// fixed box width, so each cause box sits under its gain box
+	const boxes = (texts: string[], colors: string[], size: number) => {
+		const row = $.CreatePanel('Panel', panel, '', { style: 'horizontal-align: center; flow-children: right; margin: 4px 0px 0px 0px;' });
+		texts.forEach((t, k) =>
 			$.CreatePanel('Label', row, '', {
-				text: `${KEY(st.dir)} ${Number.isFinite(st.pct) ? st.pct.toFixed(1) : '-'} %`,
-				style: `font-size: 20px; font-weight: bold; color: #111111; background-color: ${gainColor(st.pct)};
-					padding: 2px 8px; margin: 0px 3px; border-radius: 4px;`
-			});
-		}
+				text: t,
+				style: `width: 116px; text-align: center; font-size: ${size}px; font-weight: bold; color: #111111;
+					background-color: ${colors[k]}; padding: 2px 0px; margin: 0px 3px; border-radius: 4px;`
+			})
+		);
+	};
+	const fmt = (v: number, n: number) => (Number.isFinite(v) ? v.toFixed(n) : '-');
+	if (strafes.length) {
+		boxes(strafes.map((st) => `${KEY(st.dir)} ${fmt(st.pct, 1)} %`), strafes.map((st) => gainColor(st.pct)), 20);
+		if (cause)
+			boxes(
+				strafes.map((st) => (st.top ? `${st.top.cause} ${st.top.ticks}t` : 'ok')),
+				strafes.map((st) => (st.top ? 'rgb(200,200,210)' : gainColor(100))),
+				17
+			);
 	}
 	if (mistake) text(panel, mistake, 19);
 	panel.visible = true;
@@ -802,7 +839,7 @@ function workOutLine(a: Attempt) {
 	const top = mistakes[0];
 	const head = [SHOW.landing ? `J1 ${j.land.toFixed(0)} u/s` : '', SHOW.gain ? `${j.pct.toFixed(2)} %` : ''].filter(Boolean).join('  ·  ');
 	const mistake = SHOW.mistake && top ? `${top.text} (-${top.lost.toFixed(1)} u/s)` : '';
-	if (SHOW_LINE && (head || (SHOW.strafes && pcts.length) || mistake)) showLine(head, SHOW.strafes ? pcts : [], mistake);
+	if (SHOW_LINE && (head || (SHOW.strafes && pcts.length) || mistake)) showLine(head, SHOW.strafes ? pcts : [], SHOW.cause, mistake);
 	$.Msg(
 		`${LINE_TAG} ${a.id} ${JSON.stringify({
 			s: j.s,
@@ -810,6 +847,7 @@ function workOutLine(a: Attempt) {
 			land: +j.land.toFixed(3),
 			pct: +j.pct.toFixed(3),
 			strafes: pcts.map((p) => [p.dir, +p.pct.toFixed(3)]),
+			causes: pcts.map((p) => (p.top ? [p.top.cause, p.top.ticks] : null)),
 			mistakes: mistakes.map((m) => [m.check, m.i0, +m.lost.toFixed(3)])
 		})}`
 	);
@@ -976,7 +1014,7 @@ function rescanNote(filled: number, wanted: number, atEnd: boolean) {
 		: filled === wanted
 			? `${filled} missed tick${filled === 1 ? '' : 's'} filled`
 			: `${filled} of ${wanted} missed ticks filled${atEnd ? '' : ' (unpaused, rescan stopped)'}`;
-	showLine('Strafe Review: replay saved', [], sub);
+	showLine('Strafe Review: replay saved', [], false, sub);
 }
 
 function loop() {
