@@ -247,14 +247,14 @@ async function rec(h) {
 	a.dir = h.dir;
 	const d = parse(a);
 	const { jumps } = findJumps(d, a.preRows);
-	const stats = summarize(a, d, jumps);
+	const stats = summarize(a, d, jumps, { skipLast: lastJumpOut(h) });
 	const replay = isOther(a);
 	// Weak takeoff compares with the owner's own median, which says nothing about someone else's replay
 	const mistakes = runChecks(d, jumps, stats.endIdx, loadSettings(), replay ? null : takeoffBaseline(a), replay);
 	// the path from the recording's own rows (the aligned copy's gaps would bend it), nothing after the run end
 	const path = recordingPath(a, d, jumps, stats.endIdx);
 	for (let i = stats.endIdx + 1; i < d.n; i++) path.x[i] = path.y[i] = NaN;
-	const r = { head: a, d, jumps, stats, mistakes, path };
+	const r = { head: a, d, jumps, stats, mistakes, path, listHead: h };
 	recs.set(h.id, r);
 	return r;
 }
@@ -387,6 +387,12 @@ function cell(main, sub) {
 	}
 	return s;
 }
+
+// "Leave out last jump" changes only the stats, so they are worked out again in place (cached and shown)
+initSkipLast($('skip-last'), () => {
+	for (const r of [...recs.values(), ...shown]) r.stats = summarize(r.head, r.d, r.jumps, { skipLast: lastJumpOut(r.listHead) });
+	showStats();
+});
 
 // The run stat rows of the main page (runrows.js), one column per recording. Each row's best value
 // gets a star; rows without a better direction are not ranked

@@ -8,6 +8,31 @@
 // a target number (closest wins), need: 'tick' | 'keys', click(s, r). s = summarize()'s result,
 // r = { head, d, path, mistakes }. Rows without best are not ranked (no better direction).
 
+// "Leave out last jump" (on unless unticked), shared by the main page's Run stats and /compare's Stats.
+// A finished run ends in the air on its way into the end zone, so its last jump is rarely real strafing
+// and pulls the pooled numbers down. Failed runs keep it (that jump is the one to review), and so do surf
+// maps, which are out of this app's scope (their last segment is long real strafing).
+const SKIP_LAST_KEY = 'strafe-review-skip-last';
+
+function skipLastWanted() {
+	return localStorage.getItem(SKIP_LAST_KEY) !== '0';
+}
+
+// h: the list head from /api/attempts, whose reason has replay_finished() applied (the attempt file's
+// own head still reads 'replaced' for a replay played to the end)
+function lastJumpOut(h) {
+	return skipLastWanted() && h.reason === 'finish' && !/^surf_/i.test(h.dir || '');
+}
+
+// Wires the checkbox box (an <input type=checkbox>) to the saved choice; changed() runs after a toggle
+function initSkipLast(box, changed) {
+	box.checked = skipLastWanted();
+	box.addEventListener('change', () => {
+		localStorage.setItem(SKIP_LAST_KEY, box.checked ? '1' : '0');
+		changed();
+	});
+}
+
 // need: 'tick' rows are left out for a spectated live run (speed only every few ticks), 'keys' rows for
 // recordings whose keys don't line up with the moves (!d.ownKeys)
 function skipRow(r, need) {

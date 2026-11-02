@@ -429,7 +429,7 @@ async function open(dir, id) {
 	const { jumps, j1 } = findJumps(d, a.preRows);
 	// runEnd(), not just before the post tail: a replay pauses at its end and keeps sending rows
 	cur = { head: a, d, jumps, j1, tps: tickRate(a.interval), endIdx: runEnd(a, d) };
-	cur.stats = summarize(a, d, jumps);
+	cur.stats = runSummary();
 	pathView = null;
 	cur.path = recordingPath(a, d, jumps, cur.endIdx);
 	location.hash = `${dir}/${id}`;
@@ -603,6 +603,17 @@ function showHead() {
 
 $('main').addEventListener('scroll', hideRsTip, { passive: true });
 
+// summarize() for the open attempt, with the last jump left out when "Leave out last jump" applies
+function runSummary() {
+	return summarize(cur.head, cur.d, cur.jumps, { skipLast: lastJumpOut(listEntry() || cur.head) });
+}
+
+initSkipLast($('skip-last'), () => {
+	if (!cur) return;
+	cur.stats = runSummary();
+	showRunStats();
+});
+
 // Whole-run numbers above the graph: the rows in runrows.js, shared with the compare page
 function showRunStats() {
 	const sec = $('run-stats');
@@ -615,6 +626,7 @@ function showRunStats() {
 	const notes = [];
 	if (cur.d.coarse) notes.push("Spectated live run: speed only updates every few ticks, so only run, gain and speed numbers are shown.");
 	else if (!cur.d.ownKeys) notes.push('Key numbers are left out: this recording\'s keys don\'t line up with its moves.');
+	if (cur.stats.skippedLast) notes.push(`Jump ${cur.stats.skippedLast}, the hop into the end zone, is left out of the pooled numbers.`);
 	$('rs-note').textContent = notes.join(' ');
 	const ctx = {
 		cms: (r, deg) => {

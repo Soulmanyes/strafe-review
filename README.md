@@ -6,7 +6,7 @@ Per-tick strafe recording and review for [Momentum Mod](https://momentum-mod.org
 
 The review page has three parts:
 
-- `/`: one attempt as a zoomable graph, with run stats (including CS:S-style SSJ gain), the mistakes found and a top-down path. Attempts take notes and tags; automatic tags mark PBs and sens changes. The list filters by whose recording it is (own, replay, spectated) with one click, and by map, tickrate, style, result and tag. It has a search box and sorts by date, fastest finish, jump 1 speed or player. "Compare page" opens it on /compare.
+- `/`: one attempt as a zoomable graph, with run stats (including CS:S-style SSJ gain; a finished run can leave its last hop into the end zone out of them), the mistakes found and a top-down path. Attempts take notes and tags; automatic tags mark PBs and sens changes. The list filters by whose recording it is (own, replay, spectated) with one click, and by map, tickrate, style, result and tag. It has a search box and sorts by date, fastest finish, jump 1 speed or player. "Compare page" opens it on /compare.
 - `/drill`: jump 1 of every attempt, stacked and side by side, updated live, with each strafe's mouse movement in cm next to the optimal (type your mouse DPI in once).
 - `/compare`: 2 to 4 recordings on one graph, with every run stat side by side (best per row marked), per jump numbers, mistakes and paths. The picker has the same search, sort and own/replay/spectated buttons. Quick picks: your fastest finish, your best jump 1, top replay.
 

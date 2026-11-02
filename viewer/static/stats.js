@@ -156,13 +156,20 @@ function syncOver(d, ranges, lag) {
 	return { sync: n ? (100 * hit) / n : NaN, n };
 }
 
-function summarize(head, d, jumps) {
+// opts.skipLast: leave the run's last jump out of the pooled numbers (gain %, sync, angles, swaps, key
+// shares). Meant for a finished bhop run, whose last jump goes straight into the end zone; the caller
+// decides when (lastJumpOut() in runrows.js). Jump counts, perJump and speeds keep every jump, and a run
+// of one jump keeps it. skippedLast in the result is the left-out jump's number, else null.
+function summarize(head, d, jumps, opts = {}) {
 	const endIdx = runEnd(head, d);
 	const p = Math.min(head.preRows || 0, d.n - 1);
 	const run = jumps.filter((j) => j.num > 0 && j.s <= endIdx);
 	const landed = run.filter((j) => j.e <= endIdx && j.e < d.n);
-	const ranges = run.map((j) => jumpRange(j, endIdx));
-	const lag = keyLag(d, ranges);
+	const outJ = opts.skipLast && run.length > 1 ? run[run.length - 1] : null;
+	const pooled = outJ ? run.slice(0, -1) : run;
+	const ranges = pooled.map((j) => jumpRange(j, endIdx));
+	// the key lag belongs to the recording, not to the pooled jumps: worked out over every jump
+	const lag = keyLag(d, run.map((j) => jumpRange(j, endIdx)));
 
 	const replay = isOther(head);
 	let g = 0;
@@ -183,7 +190,8 @@ function summarize(head, d, jumps) {
 	let ssjN = 0;
 	const perJump = run.map((j) => {
 		const [s, e] = jumpRange(j, endIdx);
-		for (let i = s; i < e; i++) {
+		const pool = j !== outJ;
+		for (let i = s; pool && i < e; i++) {
 			if (strafing(d, i)) {
 				air++;
 				if (d.ideal_key[i]) turning++;
@@ -202,7 +210,7 @@ function summarize(head, d, jumps) {
 			}
 		}
 		const sts = strafesOf(d, j, endIdx);
-		for (const st of sts) {
+		for (const st of pool ? sts : []) {
 			for (const i of interior(d, st, 2)) {
 				if (Number.isFinite(d.ratio[i])) ratios.push(d.ratio[i]);
 				if (Number.isFinite(d.yaws[i])) yawMid.push(Math.abs(d.yaws[i]));
@@ -211,14 +219,16 @@ function summarize(head, d, jumps) {
 		}
 		const isLanded = j.e <= endIdx && j.e < d.n;
 		if (isLanded) strafes += sts.length;
-		ssjSum += j.ssjSum || 0;
-		ssjN += j.ssjN || 0;
+		if (pool) {
+			ssjSum += j.ssjSum || 0;
+			ssjN += j.ssjN || 0;
+		}
 		return { num: j.num, pct: j.pct, ssj: j.ssj, sync: syncOver(d, [[s, e]], lag).sync, strafes: sts.length, landed: isLanded, takeoff: j.takeoff, land: j.land };
 	});
 
 	// swaps after the loop: the gain dip is judged against the run's own gain %
 	const runPct = id > 0 ? (100 * g) / id : NaN;
-	for (const j of run) swaps.push(...swapsOf(d, j, endIdx, Number.isFinite(runPct) ? runPct : DIP_PCT));
+	for (const j of pooled) swaps.push(...swapsOf(d, j, endIdx, Number.isFinite(runPct) ? runPct : DIP_PCT));
 
 	// swap vs strafe gain: gain % pooled over the swap windows (each row once) vs over the strafing rows
 	// outside every window. Windows of swaps with missed ticks are left out of both.
@@ -228,7 +238,7 @@ function summarize(head, d, jumps) {
 	}
 	const inWin = { g: 0, id: 0 };
 	const outWin = { g: 0, id: 0 };
-	for (const j of run) {
+	for (const j of pooled) {
 		const [s, e] = jumpRange(j, endIdx);
 		for (let i = s; i < e; i++) {
 			if (!strafing(d, i) || !Number.isFinite(d.gain[i]) || !Number.isFinite(d.ideal[i])) continue;
@@ -320,6 +330,7 @@ function summarize(head, d, jumps) {
 		speedAvg: vn ? vsum / vn : NaN,
 		speedEnd: d.speed[endIdx],
 		perJump,
+		skippedLast: outJ ? outJ.num : null,
 		endIdx
 	};
 }
